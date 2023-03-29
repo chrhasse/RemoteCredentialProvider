@@ -1,0 +1,11 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{DED30376-B312-4168-B2D3-2D0B3EADE513}]
+@="RemoteCredentialProvider"
+
+[HKEY_CLASSES_ROOT\CLSID\{DED30376-B312-4168-B2D3-2D0B3EADE513}]
+@="RemoteCredentialProvider"
+
+[HKEY_CLASSES_ROOT\CLSID\{DED30376-B312-4168-B2D3-2D0B3EADE513}\InprocServer32]
+@="RemoteCredentialProvider.dll"
+"ThreadingModel"="Apartment"
