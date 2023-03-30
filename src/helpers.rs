@@ -20,7 +20,7 @@ use windows::{
             CPFS_DISPLAY_IN_BOTH,
             CPFS_HIDDEN,
             CPFS_DISPLAY_IN_SELECTED_TILE,
-            CPFIS_FOCUSED, CREDENTIAL_PROVIDER_USAGE_SCENARIO, CPUS_UNLOCK_WORKSTATION, CPUS_LOGON, CPUS_CREDUI
+            CPFIS_FOCUSED, CREDENTIAL_PROVIDER_USAGE_SCENARIO, CPUS_UNLOCK_WORKSTATION, CPUS_LOGON, CPUS_CREDUI, SHStrDupW
         },
         Graphics::Gdi::{
             HBITMAP,
@@ -37,9 +37,13 @@ use windows::{
             E_NOTIMPL,
             UNICODE_STRING,
             E_FAIL,
-            HANDLE
+            HANDLE,
+            TRUE,
+            FALSE,
+            GetLastError,
+            ERROR_INSUFFICIENT_BUFFER,
         },
-        Security::Authentication::Identity::{
+        Security::{Authentication::Identity::{
             KERB_INTERACTIVE_UNLOCK_LOGON,
             KERB_INTERACTIVE_LOGON,
             KerbWorkstationUnlockLogon,
@@ -49,7 +53,7 @@ use windows::{
             NEGOSSP_NAME_A,
             LsaLookupAuthenticationPackage,
             LsaDeregisterLogonProcess
-        }},
+        }, Credentials::CredProtectW}},
         core::{
             PWSTR,
             GUID,
@@ -57,7 +61,7 @@ use windows::{
             PCWSTR,
             PSTR
         },
-        w
+        w, imp::CoTaskMemFree
     };
 
 pub enum RemoteFieldID {
@@ -158,7 +162,7 @@ impl PwstrHelpers for PWSTR {
     
     fn len(&self) -> usize {
         unsafe {
-            (0..).take_while(|&i| *(self.0).offset(i) != 0).count()
+            self.as_wide().len()
         }
     }
     
@@ -262,10 +266,10 @@ pub fn get_negotiate_auth_package() -> Result<u32> {
     let mut auth_package = 0u32;
     unsafe {
         let lsa_name = NEGOSSP_NAME_A;
-        let lsa_name_len = (0..).take_while(|&i| *(lsa_name.as_ptr().offset(i)) != 0).count();
+        let lsa_name_len = lsa_name.as_bytes().len() as u16;
         let lsa_string = windows::Win32::System::Kernel::STRING {
-            Length: lsa_name_len as u16,
-            MaximumLength: lsa_name_len as u16,
+            Length: lsa_name_len,
+            MaximumLength: lsa_name_len,
             Buffer: PSTR(lsa_name.as_ptr() as *mut u8)
         };
         LsaConnectUntrusted(std::ptr::addr_of_mut!(hlsa))?;
@@ -276,5 +280,47 @@ pub fn get_negotiate_auth_package() -> Result<u32> {
         )?;
         LsaDeregisterLogonProcess(hlsa)?;
         Ok(auth_package)
+    }
+}
+
+pub fn protect_string(to_protect: PCWSTR) -> Result<PWSTR> {
+    unsafe {
+        let copy = SHStrDupW(to_protect)?;
+        // Call CredProtect to determine the lenght of the encrypted string
+        // CredProtect might require the null terminator which as_wide leaves out but
+        // that might just be an artifact of C++ code that &[u16] doesn't need
+        let mut protected_len = 0u32;
+        CredProtectW(
+            FALSE,
+            copy.as_wide(),
+            PWSTR(std::ptr::null_mut()),
+            std::ptr::addr_of_mut!(protected_len),
+            None
+        );
+        
+        let res;
+        let last_err = GetLastError();
+        if last_err != ERROR_INSUFFICIENT_BUFFER || protected_len <= 0 {
+            res = Err(last_err.to_hresult().into())
+        } else {
+            let mut buffer: Vec<u16> = Vec::with_capacity(protected_len as usize);
+            let buffer = PWSTR(buffer.as_mut_ptr());
+            if TRUE == CredProtectW(
+                FALSE,
+                copy.as_wide(),
+                buffer,
+                std::ptr::addr_of_mut!(protected_len),
+                None
+            ) {
+                res = Ok(buffer);
+            } else {
+                // Will buffer be freed at the end of this function by default or did 
+                // the PWSTR take ownership?
+                CoTaskMemFree(&buffer as *const _ as *const c_void);
+                res = Err(GetLastError().to_hresult().into());
+            }
+        }
+        CoTaskMemFree(&copy as *const _ as *const c_void);
+        res
     }
 }
