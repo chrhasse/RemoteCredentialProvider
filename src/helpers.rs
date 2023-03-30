@@ -74,7 +74,7 @@ pub struct FieldStatePair {
     pub cpfis: CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE
 }
 
-pub const FieldStatePairs: [FieldStatePair; RemoteFieldID::NumFields as usize] = [
+pub const FIELD_STATE_PAIRS: [FieldStatePair; RemoteFieldID::NumFields as usize] = [
     FieldStatePair { cpfs: CPFS_DISPLAY_IN_BOTH, cpfis: CPFIS_NONE}, // TileImage
     FieldStatePair { cpfs: CPFS_HIDDEN, cpfis: CPFIS_NONE}, // Label
     FieldStatePair { cpfs: CPFS_DISPLAY_IN_BOTH, cpfis: CPFIS_NONE}, // LargeText

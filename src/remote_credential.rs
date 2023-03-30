@@ -124,8 +124,8 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         !pcpfs.is_null() &&
         !pcpfis.is_null() {
             unsafe {
-                *pcpfs = FieldStatePairs[dwfieldid as usize].cpfs;
-                *pcpfis = FieldStatePairs[dwfieldid as usize].cpfis;
+                *pcpfs = FIELD_STATE_PAIRS[dwfieldid as usize].cpfs;
+                *pcpfis = FIELD_STATE_PAIRS[dwfieldid as usize].cpfis;
             }
             Ok(())
         } else {
