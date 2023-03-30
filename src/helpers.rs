@@ -36,8 +36,8 @@ use windows::{
             DeleteObject,
             BitBlt,
             SRCCOPY, BITMAPFILEHEADER
-        }, Foundation::{E_INVALIDARG, E_NOTIMPL, UNICODE_STRING, E_FAIL}, Security::Authentication::Identity::{KERB_INTERACTIVE_UNLOCK_LOGON, KERB_INTERACTIVE_LOGON, KerbWorkstationUnlockLogon, KerbInteractiveLogon, KERB_LOGON_SUBMIT_TYPE}},
-        core::{PWSTR, GUID, Result, PCWSTR},
+        }, Foundation::{E_INVALIDARG, E_NOTIMPL, UNICODE_STRING, E_FAIL, HANDLE}, Security::Authentication::Identity::{KERB_INTERACTIVE_UNLOCK_LOGON, KERB_INTERACTIVE_LOGON, KerbWorkstationUnlockLogon, KerbInteractiveLogon, KERB_LOGON_SUBMIT_TYPE, LsaConnectUntrusted, NEGOSSP_NAME_A, LsaLookupAuthenticationPackage, LsaDeregisterLogonProcess}},
+        core::{PWSTR, GUID, Result, PCWSTR, PSTR},
         w
     };
 
@@ -236,4 +236,26 @@ pub unsafe fn kerb_interactive_unlock_logon_pack(
     // Copy KIUL into the buffer
     buffer[..KIUL_SIZE].copy_from_slice(&std::mem::transmute::<KERB_INTERACTIVE_UNLOCK_LOGON, [u8; KIUL_SIZE]>(kiul));
     Ok(buffer)
+}
+
+pub fn get_negotiate_auth_package() -> Result<u32> {
+    let mut hlsa = HANDLE::default();
+    let mut auth_package = 0u32;
+    unsafe {
+        let lsa_name = NEGOSSP_NAME_A;
+        let lsa_name_len = (0..).take_while(|&i| *(lsa_name.as_ptr().offset(i)) != 0).count();
+        let lsa_string = windows::Win32::System::Kernel::STRING {
+            Length: lsa_name_len as u16,
+            MaximumLength: lsa_name_len as u16,
+            Buffer: PSTR(lsa_name.as_ptr() as *mut u8)
+        };
+        LsaConnectUntrusted(std::ptr::addr_of_mut!(hlsa))?;
+        LsaLookupAuthenticationPackage(
+            hlsa,
+            std::ptr::addr_of!(lsa_string),
+            std::ptr::addr_of_mut!(auth_package)
+        )?;
+        LsaDeregisterLogonProcess(hlsa)?;
+        Ok(auth_package)
+    }
 }
