@@ -1,6 +1,6 @@
 use std::{ffi::c_void, ptr, time::SystemTime};
 
-use windows::Win32::{Graphics::Gdi::{HBITMAP, BITMAPINFOHEADER, BI_RGB, GetDC, CreateDIBSection, DIB_RGB_COLORS, BITMAPINFO, RGBQUAD, SetDIBits, ReleaseDC, CreateCompatibleDC, SelectObject, SRCCOPY, BitBlt, DeleteDC, DeleteObject, BITMAPFILEHEADER}, Foundation::{E_INVALIDARG, E_NOTIMPL}};
+use windows::Win32::{Graphics::Gdi::{HBITMAP, BITMAPINFOHEADER, GetDC, CreateDIBSection, DIB_RGB_COLORS, BITMAPINFO, RGBQUAD, SetDIBits, ReleaseDC, CreateCompatibleDC, SelectObject, SRCCOPY, BitBlt, DeleteDC, DeleteObject, BITMAPFILEHEADER}, Foundation::E_INVALIDARG};
 use windows::core::Result;
 
 const TILE_IMAGE: &[u8; 49206] = include_bytes!("../tileimage.bmp");

@@ -9,7 +9,7 @@ use std::{ffi, ptr, mem};
 use core::option::Option;
 
 use windows::{
-    core::{GUID, HRESULT, implement, Result, Interface, IUnknown, ComInterface},
+    core::{GUID, HRESULT, implement, Result, IUnknown, ComInterface},
     Win32::{
         UI::Shell::ICredentialProvider,
         Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK, E_NOTIMPL, BOOL, E_INVALIDARG, CLASS_E_NOAGGREGATION, E_NOINTERFACE, S_FALSE},

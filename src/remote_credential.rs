@@ -1,16 +1,12 @@
-use std::{cell::RefCell, ffi::c_void};
+use std::cell::RefCell;
 use core::option::Option;
 
 use crate::helpers::*;
 
 use windows::{
     core::{
-        GUID,
-        HRESULT,
         implement,
         Result,
-        Interface,
-        IUnknown,
         PWSTR,
         PCWSTR
     },
@@ -20,21 +16,11 @@ use windows::{
             ICredentialProviderCredential_Impl,
             ICredentialProviderCredential2,
             ICredentialProviderCredential2_Impl,
-            ICredentialProviderCredentialEvents2,
             ICredentialProviderCredentialWithFieldOptions,
             ICredentialProviderCredentialWithFieldOptions_Impl,
             CREDENTIAL_PROVIDER_USAGE_SCENARIO,
             CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION,
-            CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR,
-            CPUS_LOGON,
-            CPUS_UNLOCK_WORKSTATION,
-            CPFT_TILE_IMAGE,
-            CPFG_CREDENTIAL_PROVIDER_LOGO,
-            CPFT_SMALL_TEXT,
-            CPFG_CREDENTIAL_PROVIDER_LABEL,
-            CPFT_LARGE_TEXT,
             CPFT_PASSWORD_TEXT,
-            CPFT_SUBMIT_BUTTON,
             ICredentialProviderCredentialEvents,
             CREDENTIAL_PROVIDER_FIELD_STATE,
             CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE,
@@ -43,17 +29,16 @@ use windows::{
             CREDENTIAL_PROVIDER_CREDENTIAL_FIELD_OPTIONS, ICredentialProviderUser, Identity_LocalUserProvider, SHStrDupW, CPFT_EDIT_TEXT, CPCFO_ENABLE_PASSWORD_REVEAL, CPCFO_ENABLE_TOUCH_KEYBOARD_AUTO_INVOKE, CPCFO_NONE,
         },
         Foundation::{
-            CLASS_E_CLASSNOTAVAILABLE,
-            E_POINTER,
-            S_OK,
             E_NOTIMPL,
             BOOL,
             E_INVALIDARG,
-            CLASS_E_NOAGGREGATION,
-            E_NOINTERFACE,
-            S_FALSE,
-            NTSTATUS, FALSE},
-        Graphics::Gdi::{HBITMAP, CreateBitmap}, Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName, System::Com::CoTaskMemFree
+            NTSTATUS,
+            FALSE
+        },
+        Graphics::Gdi::{
+            HBITMAP,
+        },
+        Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName,
     },
     w
 };
@@ -239,20 +224,20 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
 
     fn GetSerialization(
         &self,
-        pcpgsr: *mut CREDENTIAL_PROVIDER_GET_SERIALIZATION_RESPONSE,
-        pcpcs: *mut CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION,
-        ppszoptionalstatustext: *mut PWSTR,
-        pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
+        _pcpgsr: *mut CREDENTIAL_PROVIDER_GET_SERIALIZATION_RESPONSE,
+        _pcpcs: *mut CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION,
+        _ppszoptionalstatustext: *mut PWSTR,
+        _pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
     ) ->  Result<()> {
         Err(E_NOTIMPL.into())
     }
 
     fn ReportResult(
         &self,
-        ntsstatus:NTSTATUS,
-        ntssubstatus:NTSTATUS,
-        ppszoptionalstatustext: *mut PWSTR,
-        pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
+        _ntsstatus:NTSTATUS,
+        _ntssubstatus:NTSTATUS,
+        _ppszoptionalstatustext: *mut PWSTR,
+        _pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
     ) ->  Result<()> {
         Err(E_NOTIMPL.into())
     }

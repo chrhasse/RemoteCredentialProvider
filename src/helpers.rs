@@ -1,4 +1,7 @@
-use std::{ptr, ffi::c_void, time::SystemTime};
+use std::{
+    ptr,
+    ffi::c_void,
+};
 
 use windows::{
     Win32::{
@@ -23,21 +26,37 @@ use windows::{
             HBITMAP,
             DIB_RGB_COLORS,
             SetDIBits,
-            ReleaseDC,
             RGBQUAD,
             BITMAPINFO,
             BITMAPINFOHEADER,
             CreateDIBSection,
-            GetDC,
-            BI_RGB,
-            CreateCompatibleDC,
-            SelectObject,
-            DeleteDC,
-            DeleteObject,
-            BitBlt,
-            SRCCOPY, BITMAPFILEHEADER
-        }, Foundation::{E_INVALIDARG, E_NOTIMPL, UNICODE_STRING, E_FAIL, HANDLE}, Security::Authentication::Identity::{KERB_INTERACTIVE_UNLOCK_LOGON, KERB_INTERACTIVE_LOGON, KerbWorkstationUnlockLogon, KerbInteractiveLogon, KERB_LOGON_SUBMIT_TYPE, LsaConnectUntrusted, NEGOSSP_NAME_A, LsaLookupAuthenticationPackage, LsaDeregisterLogonProcess}},
-        core::{PWSTR, GUID, Result, PCWSTR, PSTR},
+            BITMAPFILEHEADER
+        },
+        Foundation::{
+            E_INVALIDARG,
+            E_NOTIMPL,
+            UNICODE_STRING,
+            E_FAIL,
+            HANDLE
+        },
+        Security::Authentication::Identity::{
+            KERB_INTERACTIVE_UNLOCK_LOGON,
+            KERB_INTERACTIVE_LOGON,
+            KerbWorkstationUnlockLogon,
+            KerbInteractiveLogon,
+            KERB_LOGON_SUBMIT_TYPE,
+            LsaConnectUntrusted,
+            NEGOSSP_NAME_A,
+            LsaLookupAuthenticationPackage,
+            LsaDeregisterLogonProcess
+        }},
+        core::{
+            PWSTR,
+            GUID,
+            Result,
+            PCWSTR,
+            PSTR
+        },
         w
     };
 

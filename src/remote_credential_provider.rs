@@ -1,10 +1,13 @@
-use std::{ffi, ptr, cell, mem, convert::TryFrom};
+use std::cell;
 use core::option::Option;
 
 use crate::helpers::*;
 
 use windows::{
-    core::{GUID, HRESULT, implement, Result, Interface, IUnknown, PWSTR},
+    core::{
+        implement,
+        Result,
+    },
     Win32::{
         UI::Shell::{
             ICredentialProvider,
@@ -17,15 +20,15 @@ use windows::{
             CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION,
             CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR,
             CPUS_LOGON,
-            CPUS_UNLOCK_WORKSTATION, CPFT_TILE_IMAGE, CPFG_CREDENTIAL_PROVIDER_LOGO, CPFT_SMALL_TEXT, CPFG_CREDENTIAL_PROVIDER_LABEL, CPFT_LARGE_TEXT, CPFT_PASSWORD_TEXT, CPFT_SUBMIT_BUTTON, ICredentialProviderUserArray,
+            CPUS_UNLOCK_WORKSTATION,
+            ICredentialProviderUserArray,
         },
-        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK, E_NOTIMPL, BOOL, E_INVALIDARG, CLASS_E_NOAGGREGATION, E_NOINTERFACE, S_FALSE},
-        System::Com::{
-            IClassFactory,
-            IClassFactory_Impl,
-        }
+        Foundation::{
+            E_NOTIMPL,
+            BOOL,
+            E_INVALIDARG,
+        },
     },
-    w
 };
 
 
@@ -49,7 +52,7 @@ impl Provider {
 impl ICredentialProviderSetUserArray_Impl for Provider {
     fn SetUserArray(
         &self,
-        users: Option<&ICredentialProviderUserArray>
+        _users: Option<&ICredentialProviderUserArray>
     ) ->  Result<()> {
         Err(E_NOTIMPL.into())
     }
@@ -111,9 +114,9 @@ impl ICredentialProvider_Impl for Provider {
 
     fn GetCredentialCount(
         &self,
-        pdwcount: *mut u32,
-        pdwdefault: *mut u32,
-        pbautologonwithdefault: *mut BOOL,
+        _pdwcount: *mut u32,
+        _pdwdefault: *mut u32,
+        _pbautologonwithdefault: *mut BOOL,
     ) -> Result<()> {
         if *self._recreate_enumerated_credentials.borrow() {
             *self._recreate_enumerated_credentials.borrow_mut() = false;
