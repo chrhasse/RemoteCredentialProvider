@@ -20,7 +20,12 @@ use windows::{
             CPFS_DISPLAY_IN_BOTH,
             CPFS_HIDDEN,
             CPFS_DISPLAY_IN_SELECTED_TILE,
-            CPFIS_FOCUSED, CREDENTIAL_PROVIDER_USAGE_SCENARIO, CPUS_UNLOCK_WORKSTATION, CPUS_LOGON, CPUS_CREDUI, SHStrDupW
+            CPFIS_FOCUSED,
+            CREDENTIAL_PROVIDER_USAGE_SCENARIO,
+            CPUS_UNLOCK_WORKSTATION,
+            CPUS_LOGON,
+            CPUS_CREDUI,
+            SHStrDupW
         },
         Graphics::Gdi::{
             HBITMAP,
@@ -53,15 +58,22 @@ use windows::{
             NEGOSSP_NAME_A,
             LsaLookupAuthenticationPackage,
             LsaDeregisterLogonProcess
-        }, Credentials::CredProtectW}},
-        core::{
-            PWSTR,
-            GUID,
-            Result,
-            PCWSTR,
-            PSTR
         },
-        w, imp::CoTaskMemFree
+        Credentials::CredProtectW
+        },
+        System::Com::{
+            CoTaskMemAlloc,
+            CoTaskMemFree
+        },
+    },
+    core::{
+        PWSTR,
+        GUID,
+        Result,
+        PCWSTR,
+        PSTR
+    },
+    w
     };
 
 pub enum RemoteFieldID {
@@ -152,6 +164,7 @@ trait PwstrHelpers {
     fn len(&self) -> usize;
     fn to_pcwstr(self) -> PCWSTR;
     fn as_bytes(&self) -> &[u8];
+    unsafe fn with_length(len: usize) -> Self;
 }
 
 impl PwstrHelpers for PWSTR {
@@ -174,6 +187,10 @@ impl PwstrHelpers for PWSTR {
         unsafe {
             std::mem::transmute::<&[u16], &[u8]>(self.as_wide())
         }
+    }
+    
+    unsafe fn with_length(len: usize) -> Self {
+        PWSTR(CoTaskMemAlloc(len * std::mem::size_of::<u16>()) as *mut u16)
     }
 }
 
@@ -303,8 +320,7 @@ pub fn protect_string(to_protect: PCWSTR) -> Result<PWSTR> {
         if last_err != ERROR_INSUFFICIENT_BUFFER || protected_len <= 0 {
             res = Err(last_err.to_hresult().into())
         } else {
-            let mut buffer: Vec<u16> = Vec::with_capacity(protected_len as usize);
-            let buffer = PWSTR(buffer.as_mut_ptr());
+            let buffer = PWSTR::with_length(protected_len as usize);
             if TRUE == CredProtectW(
                 FALSE,
                 copy.as_wide(),
@@ -314,13 +330,11 @@ pub fn protect_string(to_protect: PCWSTR) -> Result<PWSTR> {
             ) {
                 res = Ok(buffer);
             } else {
-                // Will buffer be freed at the end of this function by default or did 
-                // the PWSTR take ownership?
-                CoTaskMemFree(&buffer as *const _ as *const c_void);
+                CoTaskMemFree(Some(&buffer as *const _ as *const c_void));
                 res = Err(GetLastError().to_hresult().into());
             }
         }
-        CoTaskMemFree(&copy as *const _ as *const c_void);
+        CoTaskMemFree(Some(&copy as *const _ as *const c_void));
         res
     }
 }
