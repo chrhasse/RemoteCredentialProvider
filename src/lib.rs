@@ -3,6 +3,7 @@
 mod remote_credential_provider;
 mod remote_credential;
 pub mod helpers;
+pub mod strings;
 
 pub use remote_credential_provider::*;
 use std::{ffi, ptr, mem};

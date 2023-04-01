@@ -73,7 +73,7 @@ use windows::{
         PCWSTR,
         PSTR
     },
-    w
+    w,
     };
 
 pub enum RemoteFieldID {
