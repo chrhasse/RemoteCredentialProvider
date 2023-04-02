@@ -59,7 +59,7 @@ use windows::{
             LsaLookupAuthenticationPackage,
             LsaDeregisterLogonProcess
         },
-        Credentials::CredProtectW
+        Credentials::{CredProtectW, CredIsProtectedW, CRED_PROTECTION_TYPE, CredUnprotected}
         },
         System::Com::{
             CoTaskMemAlloc,
@@ -75,6 +75,8 @@ use windows::{
     },
     w,
     };
+
+use crate::strings::Rswstr;
 
 pub enum RemoteFieldID {
     TileImage = 0,
@@ -247,14 +249,15 @@ pub fn kerb_interactive_unlock_logon_init(
 //
 pub unsafe fn kerb_interactive_unlock_logon_pack(
     unpacked: KERB_INTERACTIVE_UNLOCK_LOGON
-) -> Result<Vec<u8>> {
+) -> Result<*mut u8> {
     // Allocate a buffer large enough to hold a
     // KERB_INTERACTIVE_UNLOCK_LOGON plus all strings
     let size = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>() +
                      unpacked.Logon.LogonDomainName.Length as usize + 
                      unpacked.Logon.UserName.Length as usize + 
                      unpacked.Logon.Password.Length as usize;
-    let mut buffer = vec![0_u8; size];
+    let buffer = CoTaskMemAlloc(size) as *mut u8;
+    let buffer = std::slice::from_raw_parts_mut(buffer, size);
 
     let mut kiul = unpacked.clone();
     const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
@@ -275,7 +278,7 @@ pub unsafe fn kerb_interactive_unlock_logon_pack(
 
     // Copy KIUL into the buffer
     buffer[..KIUL_SIZE].copy_from_slice(&std::mem::transmute::<KERB_INTERACTIVE_UNLOCK_LOGON, [u8; KIUL_SIZE]>(kiul));
-    Ok(buffer)
+    Ok(buffer.as_mut_ptr())
 }
 
 pub fn get_negotiate_auth_package() -> Result<u32> {
@@ -286,7 +289,7 @@ pub fn get_negotiate_auth_package() -> Result<u32> {
         let lsa_name_len = lsa_name.as_bytes().len() as u16;
         let lsa_string = windows::Win32::System::Kernel::STRING {
             Length: lsa_name_len,
-            MaximumLength: lsa_name_len,
+            MaximumLength: lsa_name_len + 1,
             Buffer: PSTR(lsa_name.as_ptr() as *mut u8)
         };
         LsaConnectUntrusted(std::ptr::addr_of_mut!(hlsa))?;
@@ -300,16 +303,15 @@ pub fn get_negotiate_auth_package() -> Result<u32> {
     }
 }
 
-pub fn protect_string(to_protect: PCWSTR) -> Result<PWSTR> {
+pub fn protect_string(to_protect: Rswstr) -> Result<Rswstr> {
     unsafe {
-        let copy = SHStrDupW(to_protect)?;
         // Call CredProtect to determine the lenght of the encrypted string
         // CredProtect might require the null terminator which as_wide leaves out but
         // that might just be an artifact of C++ code that &[u16] doesn't need
         let mut protected_len = 0u32;
         CredProtectW(
             FALSE,
-            copy.as_wide(),
+            to_protect.as_wide_with_terminator(),
             PWSTR(std::ptr::null_mut()),
             std::ptr::addr_of_mut!(protected_len),
             None
@@ -320,21 +322,46 @@ pub fn protect_string(to_protect: PCWSTR) -> Result<PWSTR> {
         if last_err != ERROR_INSUFFICIENT_BUFFER || protected_len <= 0 {
             res = Err(last_err.to_hresult().into())
         } else {
-            let buffer = PWSTR::with_length(protected_len as usize);
+            let buffer = Rswstr::with_length(protected_len as usize)?;
             if TRUE == CredProtectW(
                 FALSE,
-                copy.as_wide(),
-                buffer,
+                to_protect.as_wide_with_terminator(),
+                (&buffer).into(),
                 std::ptr::addr_of_mut!(protected_len),
                 None
             ) {
                 res = Ok(buffer);
             } else {
-                CoTaskMemFree(Some(&buffer as *const _ as *const c_void));
                 res = Err(GetLastError().to_hresult().into());
             }
         }
-        CoTaskMemFree(Some(&copy as *const _ as *const c_void));
         res
+    }
+}
+
+pub fn protect_password_if_necessary(
+    password: Rswstr,
+    cpus: CREDENTIAL_PROVIDER_USAGE_SCENARIO
+) -> Result<Rswstr> {
+    unsafe {
+        if password.str_len() == 0 {
+            return Ok(Rswstr::from(w!("")));
+        }
+        let mut already_protected = false;
+        let mut protection_type = CRED_PROTECTION_TYPE(0);
+        if CredIsProtectedW(
+            PCWSTR::from(&password),
+            std::ptr::addr_of_mut!(protection_type)
+        ) == TRUE {
+            if CredUnprotected != protection_type {
+                already_protected = true;
+            }
+        }
+        
+        if CPUS_CREDUI == cpus || already_protected {
+            return Ok(password.clone())
+        }
+
+        protect_string(password)
     }
 }

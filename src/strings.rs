@@ -69,7 +69,7 @@ impl Rswstr {
     pub fn to_unicode_string(self) -> UNICODE_STRING {
         let value = std::mem::ManuallyDrop::new(self);
         let size = (value.str_len() * std::mem::size_of::<u16>()) as u16;
-        UNICODE_STRING { Length: size, MaximumLength: size + 1, Buffer: PWSTR(value.ptr) }
+        UNICODE_STRING { Length: size, MaximumLength: size, Buffer: PWSTR(value.ptr) }
     }
     
     pub fn as_wide(&self) -> &[u16] {
@@ -96,6 +96,18 @@ impl Rswstr {
         }
     }
 
+}
+
+impl Clone for Rswstr {
+    fn clone(&self) -> Self {
+        unsafe {
+            if let Ok(copy) = SHStrDupW::<PCWSTR>(self.into()) {
+                copy.into()
+            } else {
+                std::process::abort()
+            }
+        }
+    }
 }
 
 impl Drop for Rswstr {
