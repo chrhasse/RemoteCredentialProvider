@@ -1,5 +1,5 @@
 use std::{
-    ffi::c_void,
+    ffi::c_void, cell::{RefCell, Ref, RefMut}, ops::Deref,
 };
 
 use windows::{
@@ -8,7 +8,7 @@ use windows::{
             SHStrDupW
         },
         Foundation::{
-            UNICODE_STRING,
+            UNICODE_STRING, E_ACCESSDENIED,
         },
         System::Com::{
             CoTaskMemAlloc,
