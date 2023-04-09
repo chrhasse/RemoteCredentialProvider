@@ -1,5 +1,5 @@
 use std::{
-    ffi::c_void,
+    ffi::c_void, cell::{RefCell, Ref, RefMut}, ops::Deref,
 };
 
 use windows::{
@@ -8,11 +8,11 @@ use windows::{
             SHStrDupW
         },
         Foundation::{
-            UNICODE_STRING,
+            UNICODE_STRING, E_ACCESSDENIED,
         },
         System::Com::{
             CoTaskMemAlloc,
-            CoTaskMemFree
+            CoTaskMemFree, CoGetMalloc
         },
     },
     core::{
@@ -22,8 +22,17 @@ use windows::{
     },
     imp::E_OUTOFMEMORY
     };
+
+union RswstrUnion {
+    as_mut: *mut u16,
+    as_const: *const u16,
+    as_pwstr: PWSTR,
+    as_pcwstr: PCWSTR
+}
+
 pub struct Rswstr {
-    ptr: *mut u16
+    ptr: RswstrUnion,
+    should_drop: bool,
 }
 
 impl Rswstr {
@@ -36,72 +45,87 @@ impl Rswstr {
                 Err(E_OUTOFMEMORY.into())
             } else {
                 Ok(Rswstr {
-                    ptr: buffer,
+                    ptr: RswstrUnion{ as_mut: buffer },
+                    should_drop: true
                 })
             }
         }
     }
     
-    pub fn as_mut(&self) -> *mut u16 {
-        self.ptr
+    pub unsafe fn as_mut(&self) -> *mut u16 {
+        self.ptr.as_mut
     }
 
-    pub fn as_const(&self) -> *const u16 {
-        self.ptr.cast_const()
+    pub unsafe fn as_const(&self) -> *const u16 {
+        self.ptr.as_const
+    }
+    
+    pub unsafe fn as_pwstr(&self) -> PWSTR {
+        self.ptr.as_pwstr
+    }
+
+    pub unsafe fn as_pcwstr(&self) -> PCWSTR {
+        self.ptr.as_pcwstr
+    }
+
+    pub unsafe fn as_wide(&self) -> &[u16] {
+        std::slice::from_raw_parts(self.ptr.as_const, self.str_len())
+    }
+
+    pub unsafe fn as_bytes(&self) -> &[u8] {
+        std::mem::transmute::<&[u16], &[u8]>(self.as_wide())
+    }
+    
+    pub unsafe fn as_wide_with_terminator(&self) -> &[u16] {
+        std::slice::from_raw_parts(self.ptr.as_const, self.str_len() + 1)
+    }
+
+    pub unsafe fn as_bytes_with_terminator(&self) -> &[u8] {
+        std::mem::transmute::<&[u16], &[u8]>(self.as_wide_with_terminator())
+    }
+    
+    pub fn allocation_size(&self) -> Result<usize> {
+        unsafe {
+            let malloc = CoGetMalloc(1)?;
+            Ok(malloc.GetSize(Some(self.as_const() as *const c_void)))
+        }
     }
     
     pub fn str_len(&self) -> usize {
         unsafe {
-            wcslen(self.into())
+            wcslen(self.as_pcwstr())
         }
     }
     
-    pub fn to_pcwstr(self) -> PCWSTR {
-        let value = std::mem::ManuallyDrop::new(self);
-        PCWSTR(value.ptr.cast_const())
+    pub unsafe fn to_pcwstr(mut self) -> PCWSTR {
+        self.should_drop = false;
+        self.ptr.as_pcwstr
     }
 
-    pub fn to_pwstr(self) -> PWSTR {
-        let value = std::mem::ManuallyDrop::new(self);
-        PWSTR(value.ptr)
+    pub unsafe fn to_pwstr(mut self) -> PWSTR {
+        self.should_drop = false;
+        self.ptr.as_pwstr
     }
 
-    pub fn to_unicode_string(self) -> UNICODE_STRING {
-        let value = std::mem::ManuallyDrop::new(self);
-        let size = (value.str_len() * std::mem::size_of::<u16>()) as u16;
-        UNICODE_STRING { Length: size, MaximumLength: size, Buffer: PWSTR(value.ptr) }
+    pub unsafe fn to_unicode_string(mut self) -> UNICODE_STRING {
+        self.should_drop = false;
+        let size = (self.str_len() * std::mem::size_of::<u16>()) as u16;
+        UNICODE_STRING { Length: size, MaximumLength: size, Buffer: self.ptr.as_pwstr }
     }
     
-    pub fn as_wide(&self) -> &[u16] {
-        unsafe {
-            std::slice::from_raw_parts(self.ptr, self.str_len())
-        }
+    pub unsafe fn clone_from_pcwstr(value: PCWSTR) -> Result<Self> {
+            let copy = SHStrDupW(value)?;
+            Ok(Self {
+                ptr: RswstrUnion { as_pwstr: copy },
+                should_drop: true
+            })
     }
-
-    pub fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::mem::transmute::<&[u16], &[u8]>(self.as_wide())
-        }
-    }
-    
-    pub fn as_wide_with_terminator(&self) -> &[u16] {
-        unsafe {
-            std::slice::from_raw_parts(self.ptr, self.str_len() + 1)
-        }
-    }
-
-    pub fn as_bytes_with_terminator(&self) -> &[u8] {
-        unsafe {
-            std::mem::transmute::<&[u16], &[u8]>(self.as_wide_with_terminator())
-        }
-    }
-
 }
 
 impl Clone for Rswstr {
     fn clone(&self) -> Self {
         unsafe {
-            if let Ok(copy) = SHStrDupW::<PCWSTR>(self.into()) {
+            if let Ok(copy) = SHStrDupW(self.as_pcwstr()) {
                 copy.into()
             } else {
                 std::process::abort()
@@ -113,7 +137,9 @@ impl Clone for Rswstr {
 impl Drop for Rswstr {
     fn drop(&mut self) {
         unsafe {
-            CoTaskMemFree(Some(self.ptr as *const c_void));
+            if self.should_drop {
+                CoTaskMemFree(Some(*self.as_const() as *const c_void));
+            }
         }
     }
 }
@@ -121,41 +147,8 @@ impl Drop for Rswstr {
 impl From<PWSTR> for Rswstr {
     fn from(value: PWSTR) -> Self {
         Self {
-            ptr: value.0,
+            ptr: RswstrUnion { as_pwstr: value },
+            should_drop: true
         }
-    }
-}
-
-impl From<PCWSTR> for Rswstr {
-    fn from(value: PCWSTR) -> Self {
-        unsafe {
-            // 
-            if let Ok(copy) = SHStrDupW(value) {
-                Self {
-                    ptr: copy.0
-                }
-            } else {
-                std::process::abort()
-            }
-        }
-    }
-}
-
-impl From<&Rswstr> for PCWSTR {
-    fn from(value: &Rswstr) -> Self {
-        PCWSTR(value.ptr.cast_const())
-    }
-}
-
-impl From<&Rswstr> for PWSTR {
-    fn from(value: &Rswstr) -> Self {
-        PWSTR(value.ptr)
-    }
-}
-
-impl From<&Rswstr> for UNICODE_STRING {
-    fn from(value: &Rswstr) -> Self {
-        let size = (value.str_len() * std::mem::size_of::<u16>()) as u16;
-        UNICODE_STRING { Length: size, MaximumLength: size, Buffer: PWSTR(value.ptr) }
     }
 }

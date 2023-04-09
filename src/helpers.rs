@@ -311,7 +311,7 @@ pub fn protect_string(to_protect: Rswstr) -> Result<Rswstr> {
         let mut protected_len = 0u32;
         CredProtectW(
             FALSE,
-            to_protect.as_wide_with_terminator(),
+            &to_protect.as_wide_with_terminator(),
             PWSTR(std::ptr::null_mut()),
             std::ptr::addr_of_mut!(protected_len),
             None
@@ -325,8 +325,8 @@ pub fn protect_string(to_protect: Rswstr) -> Result<Rswstr> {
             let buffer = Rswstr::with_length(protected_len as usize)?;
             if TRUE == CredProtectW(
                 FALSE,
-                to_protect.as_wide_with_terminator(),
-                (&buffer).into(),
+                &to_protect.as_wide_with_terminator(),
+                buffer.as_pwstr(),
                 std::ptr::addr_of_mut!(protected_len),
                 None
             ) {
@@ -345,12 +345,12 @@ pub fn protect_password_if_necessary(
 ) -> Result<Rswstr> {
     unsafe {
         if password.str_len() == 0 {
-            return Ok(Rswstr::from(w!("")));
+            return Ok(password);
         }
         let mut already_protected = false;
         let mut protection_type = CRED_PROTECTION_TYPE(0);
         if CredIsProtectedW(
-            PCWSTR::from(&password),
+            password.as_pcwstr(),
             std::ptr::addr_of_mut!(protection_type)
         ) == TRUE {
             if CredUnprotected != protection_type {
@@ -359,7 +359,7 @@ pub fn protect_password_if_necessary(
         }
         
         if CPUS_CREDUI == cpus || already_protected {
-            return Ok(password.clone())
+            return Ok(password)
         }
 
         protect_string(password)
