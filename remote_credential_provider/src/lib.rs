@@ -2,8 +2,6 @@
 // https://stackoverflow.com/questions/75279682/implementing-a-windows-credential-provider
 pub mod remote_credential_provider;
 pub mod remote_credential;
-pub mod helpers;
-pub mod strings;
 
 pub use remote_credential_provider::*;
 use std::{ffi, ptr, mem};

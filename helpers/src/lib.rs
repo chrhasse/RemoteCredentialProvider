@@ -74,6 +74,7 @@ use windows::{
     w,
     };
 
+mod strings;
 use crate::strings::Rswstr;
 
 pub enum RemoteFieldID {
