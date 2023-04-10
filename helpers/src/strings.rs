@@ -1,15 +1,11 @@
-use std::{
-    ffi::c_void, cell::{RefCell, Ref, RefMut}, ops::Deref,
-};
+use std::ffi::c_void;
 
 use windows::{
     Win32::{
         UI::Shell::{
             SHStrDupW
         },
-        Foundation::{
-            UNICODE_STRING, E_ACCESSDENIED,
-        },
+        Foundation::UNICODE_STRING,
         System::Com::{
             CoTaskMemAlloc,
             CoTaskMemFree, CoGetMalloc
