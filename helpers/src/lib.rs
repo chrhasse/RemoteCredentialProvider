@@ -73,8 +73,6 @@ use windows::{
     },
     };
 
-use once_cell::sync::Lazy;
-
 mod strings;
 pub use crate::strings::Rswstr;
 
@@ -100,7 +98,7 @@ pub const FIELD_STATE_PAIRS: [FieldStatePair; RemoteFieldID::NumFields as usize]
     FieldStatePair { cpfs: CPFS_DISPLAY_IN_SELECTED_TILE, cpfis: CPFIS_NONE}, //SubmitButton
 ];
 
-pub static CP_FIELD_DESCRIPTORS: Lazy<[CPFieldDescriptor; RemoteFieldID::NumFields as usize]> = Lazy::new(|| {
+pub static CP_FIELD_DESCRIPTORS: [CPFieldDescriptor; RemoteFieldID::NumFields as usize] =
     [
         CPFieldDescriptor {
             field_id: RemoteFieldID::TileImage as u32,
@@ -132,8 +130,7 @@ pub static CP_FIELD_DESCRIPTORS: Lazy<[CPFieldDescriptor; RemoteFieldID::NumFiel
             label: "Submit",
             guid_field_type: GUID::from_u128(0)
         }
-    ]
-});
+    ];
 
 pub struct CPFieldDescriptor {
     pub field_id: u32,
