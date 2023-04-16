@@ -1,5 +1,5 @@
 use std::{
-    ptr,
+    ptr::{self, addr_of_mut},
     ffi::c_void,
 };
 
@@ -143,16 +143,14 @@ impl CPFieldDescriptor {
     pub unsafe fn to_cpfd(&self) -> Result<*mut CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR> {
         let s = Rswstr::clone_from_str(self.label)?;
         let ptr = CoTaskMemAlloc(std::mem::size_of::<CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR>()).cast::<CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR>();
-        if let Some(cpfd) = ptr.as_mut() {
-            cpfd.dwFieldID = self.field_id;
-            cpfd.cpft = self.cpft;
-            cpfd.guidFieldType = self.guid_field_type;
-            cpfd.pszLabel = s.to_pwstr();
-            Ok(ptr)
-        } else {
-            Err(E_OUTOFMEMORY.into())
+        if ptr.is_null(){
+            return Err(E_OUTOFMEMORY.into())
         }
-
+        addr_of_mut!((*ptr).dwFieldID).write(self.field_id);
+        addr_of_mut!((*ptr).cpft).write(self.cpft);
+        addr_of_mut!((*ptr).guidFieldType).write(self.guid_field_type);
+        addr_of_mut!((*ptr).pszLabel).write(s.to_pwstr());
+        Ok(ptr)
     }
 }
 
