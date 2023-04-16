@@ -11,7 +11,7 @@ use windows::{
     core::{GUID, HRESULT, implement, Result, IUnknown, ComInterface},
     Win32::{
         UI::Shell::ICredentialProvider,
-        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK, E_NOTIMPL, BOOL, E_INVALIDARG, CLASS_E_NOAGGREGATION, E_NOINTERFACE, S_FALSE},
+        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK, BOOL, E_INVALIDARG, CLASS_E_NOAGGREGATION, E_NOINTERFACE, S_FALSE},
         System::Com::{
             IClassFactory,
             IClassFactory_Impl,
@@ -19,6 +19,10 @@ use windows::{
     },
 };
 
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+
+static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[no_mangle]
 extern "system" fn DllGetClassObject(
@@ -57,7 +61,24 @@ extern "system" fn DllGetClassObject(
 
 #[no_mangle]
 extern "system" fn DllCanUnloadNow() -> HRESULT {
-    S_FALSE
+    if DLL_REF_COUNT.load(SeqCst) > 0 {
+        S_OK
+    } else {
+        S_FALSE
+    }
+}
+
+pub fn dll_add_ref() 
+{
+    DLL_REF_COUNT.fetch_add(1, SeqCst);
+}
+
+pub fn dll_release() {
+    DLL_REF_COUNT.fetch_update(
+        SeqCst,
+        SeqCst,
+        |current| Some(current.saturating_sub(1))
+    ).unwrap();
 }
 
 #[implement(IClassFactory)]
@@ -95,7 +116,12 @@ impl IClassFactory_Impl for ProviderFactory {
         Ok(())
     }
 
-    fn LockServer(&self, _flock: BOOL) -> Result<()> {
-        Err(E_NOTIMPL.into())
+    fn LockServer(&self, flock: BOOL) -> Result<()> {
+        if flock.as_bool() {
+            dll_add_ref();
+        } else {
+            dll_release();
+        }
+        Ok(())
     }
 }

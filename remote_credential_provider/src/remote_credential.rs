@@ -60,6 +60,7 @@ impl RemoteCredential {
         user: ICredentialProviderUser,
         password: PCWSTR
     ) -> Result<Self> {
+        crate::dll_add_ref();
         let guid_provider = unsafe { user.GetProviderID()? };
         Ok(RemoteCredential {
             _cpus: RefCell::new(cpus),
@@ -191,8 +192,8 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         psz: &PCWSTR
     ) ->  Result<()> {
         if dwfieldid < RemoteFieldID::NumFields as u32 &&
-            (get_credential_provider_field_descriptors()[dwfieldid as usize].cpft == CPFT_PASSWORD_TEXT ||
-             get_credential_provider_field_descriptors()[dwfieldid as usize].cpft == CPFT_EDIT_TEXT) {
+            (CP_FIELD_DESCRIPTORS[dwfieldid as usize].cpft == CPFT_PASSWORD_TEXT ||
+             CP_FIELD_DESCRIPTORS[dwfieldid as usize].cpft == CPFT_EDIT_TEXT) {
                 (*self._field_strings.borrow_mut())[dwfieldid as usize] = psz.clone();
                 Ok(())
         } else {
@@ -261,5 +262,9 @@ impl ICredentialProviderCredentialWithFieldOptions_Impl for RemoteCredential {
     }
 }
 
-
+impl Drop for RemoteCredential {
+    fn drop(&mut self) {
+        crate::dll_release();
+    }
+}
 

@@ -24,7 +24,7 @@ use windows::{
             CREDENTIAL_PROVIDER_USAGE_SCENARIO,
             CPUS_UNLOCK_WORKSTATION,
             CPUS_LOGON,
-            CPUS_CREDUI,
+            CPUS_CREDUI, CREDENTIAL_PROVIDER_FIELD_TYPE,
         },
         Graphics::Gdi::{
             HBITMAP,
@@ -45,7 +45,7 @@ use windows::{
             TRUE,
             FALSE,
             GetLastError,
-            ERROR_INSUFFICIENT_BUFFER,
+            ERROR_INSUFFICIENT_BUFFER, E_OUTOFMEMORY,
         },
         Security::{Authentication::Identity::{
             KERB_INTERACTIVE_UNLOCK_LOGON,
@@ -71,11 +71,12 @@ use windows::{
         PCWSTR,
         PSTR
     },
-    w,
     };
 
+use once_cell::sync::Lazy;
+
 mod strings;
-use crate::strings::Rswstr;
+pub use crate::strings::Rswstr;
 
 pub enum RemoteFieldID {
     TileImage = 0,
@@ -99,40 +100,63 @@ pub const FIELD_STATE_PAIRS: [FieldStatePair; RemoteFieldID::NumFields as usize]
     FieldStatePair { cpfs: CPFS_DISPLAY_IN_SELECTED_TILE, cpfis: CPFIS_NONE}, //SubmitButton
 ];
 
-pub fn get_credential_provider_field_descriptors() ->
-[CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR; RemoteFieldID::NumFields as usize] {
+pub static CP_FIELD_DESCRIPTORS: Lazy<[CPFieldDescriptor; RemoteFieldID::NumFields as usize]> = Lazy::new(|| {
     [
-        CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR {
-            dwFieldID: RemoteFieldID::TileImage as u32,
+        CPFieldDescriptor {
+            field_id: RemoteFieldID::TileImage as u32,
             cpft: CPFT_TILE_IMAGE,
-            pszLabel: PWSTR(w!("Image").as_ptr() as *mut u16),
-            guidFieldType: CPFG_CREDENTIAL_PROVIDER_LOGO
+            label: "Image",
+            guid_field_type: CPFG_CREDENTIAL_PROVIDER_LOGO
         },
-        CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR {
-            dwFieldID: RemoteFieldID::Label as u32,
+        CPFieldDescriptor {
+            field_id: RemoteFieldID::Label as u32,
             cpft: CPFT_SMALL_TEXT,
-            pszLabel: PWSTR(w!("Tooltip").as_ptr() as *mut u16),
-            guidFieldType: CPFG_CREDENTIAL_PROVIDER_LABEL
+            label: "Tooltip",
+            guid_field_type: CPFG_CREDENTIAL_PROVIDER_LABEL
         },
-        CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR {
-            dwFieldID: RemoteFieldID::LargeText as u32,
+        CPFieldDescriptor {
+            field_id: RemoteFieldID::LargeText as u32,
             cpft: CPFT_LARGE_TEXT,
-            pszLabel: PWSTR(w!("LargeText").as_ptr() as *mut u16),
-            guidFieldType: GUID::from_u128(0)
+            label: "LargeText",
+            guid_field_type: GUID::from_u128(0)
         },
-        CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR {
-            dwFieldID: RemoteFieldID::Password as u32,
+        CPFieldDescriptor {
+            field_id: RemoteFieldID::Password as u32,
             cpft: CPFT_PASSWORD_TEXT,
-            pszLabel: PWSTR(w!("Password text").as_ptr() as *mut u16),
-            guidFieldType: GUID::from_u128(0)
+            label: "Password text",
+            guid_field_type: GUID::from_u128(0)
         },
-        CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR {
-            dwFieldID: RemoteFieldID::SubmitButton as u32,
+        CPFieldDescriptor {
+            field_id: RemoteFieldID::SubmitButton as u32,
             cpft: CPFT_SUBMIT_BUTTON,
-            pszLabel: PWSTR(w!("Submit").as_ptr() as *mut u16),
-            guidFieldType: GUID::from_u128(0)
+            label: "Submit",
+            guid_field_type: GUID::from_u128(0)
         }
     ]
+});
+
+pub struct CPFieldDescriptor {
+    pub field_id: u32,
+    pub cpft: CREDENTIAL_PROVIDER_FIELD_TYPE,
+    pub label: &'static str,
+    pub guid_field_type: GUID
+}
+
+impl CPFieldDescriptor {
+    pub unsafe fn to_cpfd(&self) -> Result<*mut CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR> {
+        let s = Rswstr::clone_from_str(self.label)?;
+        let ptr = CoTaskMemAlloc(std::mem::size_of::<CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR>()).cast::<CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR>();
+        if let Some(cpfd) = ptr.as_mut() {
+            cpfd.dwFieldID = self.field_id;
+            cpfd.cpft = self.cpft;
+            cpfd.guidFieldType = self.guid_field_type;
+            cpfd.pszLabel = s.to_pwstr();
+            Ok(ptr)
+        } else {
+            Err(E_OUTOFMEMORY.into())
+        }
+
+    }
 }
 
 const BMPFHSZ: usize = std::mem::size_of::<BITMAPFILEHEADER>();
@@ -248,7 +272,7 @@ pub fn kerb_interactive_unlock_logon_init(
 //
 pub unsafe fn kerb_interactive_unlock_logon_pack(
     unpacked: KERB_INTERACTIVE_UNLOCK_LOGON
-) -> Result<*mut u8> {
+) -> Result<Vec<u8>> {
     // Allocate a buffer large enough to hold a
     // KERB_INTERACTIVE_UNLOCK_LOGON plus all strings
     let size = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>() +
@@ -256,7 +280,7 @@ pub unsafe fn kerb_interactive_unlock_logon_pack(
                      unpacked.Logon.UserName.Length as usize + 
                      unpacked.Logon.Password.Length as usize;
     let buffer = CoTaskMemAlloc(size) as *mut u8;
-    let buffer = std::slice::from_raw_parts_mut(buffer, size);
+    let mut buffer = std::slice::from_raw_parts_mut(buffer, size).to_owned();
 
     let mut kiul = unpacked.clone();
     const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
@@ -277,7 +301,24 @@ pub unsafe fn kerb_interactive_unlock_logon_pack(
 
     // Copy KIUL into the buffer
     buffer[..KIUL_SIZE].copy_from_slice(&std::mem::transmute::<KERB_INTERACTIVE_UNLOCK_LOGON, [u8; KIUL_SIZE]>(kiul));
-    Ok(buffer.as_mut_ptr())
+    Ok(buffer)
+}
+
+pub unsafe fn kerb_interactive_unlock_logon_unpack_in_place(mut packed: &[u8]) -> Result<()> {
+    const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
+    let mut kiul = std::mem::transmute::<&mut [u8; KIUL_SIZE], &mut KERB_INTERACTIVE_UNLOCK_LOGON>
+        (&mut packed[..KIUL_SIZE].try_into().map_err(|_| E_INVALIDARG)?);
+    let packed_ptr = std::ptr::addr_of_mut!(packed) as *mut u16;
+    if (kiul.Logon.LogonDomainName.Buffer.0 as usize + kiul.Logon.LogonDomainName.MaximumLength as usize) <= packed.len() &&
+       (kiul.Logon.UserName.Buffer.0 as usize + kiul.Logon.UserName.MaximumLength as usize) <= packed.len() &&
+       (kiul.Logon.Password.Buffer.0 as usize + kiul.Logon.Password.MaximumLength as usize) <= packed.len() {
+        kiul.Logon.LogonDomainName.Buffer = PWSTR(packed_ptr.offset(kiul.Logon.LogonDomainName.Buffer.0 as isize));
+        kiul.Logon.UserName.Buffer = PWSTR(packed_ptr.offset(kiul.Logon.UserName.Buffer.0 as isize));
+        kiul.Logon.Password.Buffer = PWSTR(packed_ptr.offset(kiul.Logon.Password.Buffer.0 as isize));
+        Ok(())
+    } else {
+        Err(E_INVALIDARG.into())
+    }
 }
 
 pub fn get_negotiate_auth_package() -> Result<u32> {
@@ -362,5 +403,23 @@ pub fn protect_password_if_necessary(
         }
 
         protect_string(password)
+    }
+}
+pub struct DomainUsername {
+    pub domain: Rswstr,
+    pub username: Rswstr
+}
+
+pub unsafe fn split_domain_and_username(qualified_user_name: Rswstr) -> Result<DomainUsername> {
+    if let Some((domain, username)) = qualified_user_name.copy_as_string()?.split_once("\\") {
+        Ok(DomainUsername{
+            domain: Rswstr::clone_from_str(domain)?,
+            username: Rswstr::clone_from_str(username)?
+        })
+    } else {
+        Ok(DomainUsername {
+            domain: Rswstr::clone_from_str("")?,
+            username: qualified_user_name
+        })
     }
 }

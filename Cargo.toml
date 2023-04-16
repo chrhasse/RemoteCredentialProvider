@@ -3,3 +3,9 @@ members = [
     "remote_credential_provider",
     "helpers"
 ]
+
+[profile.dev]
+panic = 'abort'
+
+[profile.release]
+panic = 'abort'

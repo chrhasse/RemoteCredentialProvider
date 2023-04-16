@@ -5,7 +5,7 @@ use windows::{
         UI::Shell::{
             SHStrDupW
         },
-        Foundation::UNICODE_STRING,
+        Foundation::{UNICODE_STRING, E_POINTER},
         System::Com::{
             CoTaskMemAlloc,
             CoTaskMemFree, CoGetMalloc
@@ -80,17 +80,13 @@ impl Rswstr {
         std::mem::transmute::<&[u16], &[u8]>(self.as_wide_with_terminator())
     }
     
-    pub fn allocation_size(&self) -> Result<usize> {
-        unsafe {
-            let malloc = CoGetMalloc(1)?;
-            Ok(malloc.GetSize(Some(self.as_const() as *const c_void)))
-        }
+    pub unsafe fn allocation_size(&self) -> Result<usize> {
+        let malloc = CoGetMalloc(1)?;
+        Ok(malloc.GetSize(Some(self.as_const() as *const c_void)))
     }
     
-    pub fn str_len(&self) -> usize {
-        unsafe {
-            wcslen(self.as_pcwstr())
-        }
+    pub unsafe fn str_len(&self) -> usize {
+        wcslen(self.as_pcwstr())
     }
     
     pub unsafe fn to_pcwstr(mut self) -> PCWSTR {
@@ -116,6 +112,26 @@ impl Rswstr {
                 should_drop: true
             })
     }
+    
+    pub unsafe fn clone_from_str(value: &str) -> Result<Self> {
+        let mut tmp_vec: Vec<u16> = value.encode_utf16().collect();
+        if tmp_vec[tmp_vec.len() - 1] != 0_u16 {
+            tmp_vec.push(0_u16);
+        }
+        let copy = SHStrDupW(PCWSTR(tmp_vec.as_ptr()))?;
+        Ok(Self {
+            ptr: RswstrUnion { as_pwstr: copy },
+            should_drop: true
+        })
+    }
+    
+    pub unsafe fn copy_as_string(&self) -> Result<String> {
+        if self.ptr.as_const.is_null() {
+            Err(E_POINTER.into())
+        } else {
+            Ok(self.as_pwstr().to_string()?)
+        }
+    }
 }
 
 impl Clone for Rswstr {
@@ -134,8 +150,27 @@ impl Drop for Rswstr {
     fn drop(&mut self) {
         unsafe {
             if self.should_drop {
-                CoTaskMemFree(Some(*self.as_const() as *const c_void));
+                CoTaskMemFree(Some(self.as_const() as *const c_void));
             }
+        }
+    }
+}
+
+impl std::fmt::Debug for Rswstr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unsafe {
+            f.debug_struct("Rswstr")
+             .field("ptr", &self.copy_as_string())
+             .field("should_drop", &self.should_drop)
+             .finish()
+        }
+    }
+}
+
+impl std::fmt::Display for Rswstr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        unsafe {
+            write!(f, "{}", self.copy_as_string().unwrap_or("NULL".into()))
         }
     }
 }

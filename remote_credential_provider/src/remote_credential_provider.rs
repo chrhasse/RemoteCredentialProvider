@@ -1,4 +1,4 @@
-use std::cell;
+use std::cell::RefCell;
 use core::option::Option;
 
 use helpers::*;
@@ -6,7 +6,7 @@ use helpers::*;
 use windows::{
     core::{
         implement,
-        Result,
+        Result, ComInterface,
     },
     Win32::{
         UI::Shell::{
@@ -21,12 +21,14 @@ use windows::{
             CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR,
             CPUS_LOGON,
             CPUS_UNLOCK_WORKSTATION,
+            CPUS_CREDUI,
+            CPUS_CHANGE_PASSWORD,
             ICredentialProviderUserArray,
         },
         Foundation::{
             E_NOTIMPL,
             BOOL,
-            E_INVALIDARG,
+            E_INVALIDARG, E_UNEXPECTED,
         },
     },
 };
@@ -34,18 +36,31 @@ use windows::{
 
 #[implement(ICredentialProvider, ICredentialProviderSetUserArray)]
 pub struct Provider {
-    _up_advise_context: cell::RefCell<usize>,
-    _cred_prov_events: cell::RefCell<Option<ICredentialProviderEvents>>,
-    _recreate_enumerated_credentials: cell::RefCell<bool>,
+    _up_advise_context: RefCell<usize>,
+    _cred_prov_events: RefCell<Option<ICredentialProviderEvents>>,
+    _recreate_enumerated_credentials: RefCell<bool>,
+    _cpus: RefCell<CREDENTIAL_PROVIDER_USAGE_SCENARIO>,
 }
 
 impl Provider {
     pub fn new() -> Self {
+        crate::dll_add_ref();
         Self {
-            _up_advise_context: cell::RefCell::new(0),
-            _cred_prov_events: cell::RefCell::new(None),
-            _recreate_enumerated_credentials: cell::RefCell::new(false),
+            _up_advise_context: RefCell::new(0),
+            _cred_prov_events: RefCell::new(None),
+            _recreate_enumerated_credentials: RefCell::new(false),
+            _cpus: RefCell::new(CREDENTIAL_PROVIDER_USAGE_SCENARIO::default())
         }
+    }
+    
+    pub fn notify_changed(&self) -> Result<()> {
+        let res = Err(E_UNEXPECTED.into());
+        if let Some(ref events) = *self._cred_prov_events.borrow() {
+            unsafe {
+                events.CredentialsChanged(*self._up_advise_context.borrow())?;
+            }
+        }
+        res
     }
 }
 
@@ -65,11 +80,13 @@ impl ICredentialProvider_Impl for Provider {
         _dwflags: u32,
     ) -> Result<()> {
         match cpus {
-            CPUS_LOGON | CPUS_UNLOCK_WORKSTATION => {
+            CPUS_LOGON | CPUS_UNLOCK_WORKSTATION | CPUS_CREDUI => {
                 *self._recreate_enumerated_credentials.borrow_mut() = true;
+                *self._cpus.borrow_mut() = cpus;
                 Ok(())
-            }
-            _ => Err(E_NOTIMPL.into())
+            },
+            CPUS_CHANGE_PASSWORD => Err(E_NOTIMPL.into()),
+            _ => Err(E_INVALIDARG.into())
         }
     }
     
@@ -86,14 +103,14 @@ impl ICredentialProvider_Impl for Provider {
         upadvisecontext: usize,
     ) -> Result<()> {
         if let Some(p) = pcpe {
-            *self._cred_prov_events.borrow_mut() = Some(p.clone());
+            *self._cred_prov_events.borrow_mut() = Some(p.cast()?);
         }
         *self._up_advise_context.borrow_mut() = upadvisecontext;
         Ok(())
     }
 
     fn UnAdvise(&self) -> Result<()> {
-        *self._cred_prov_events.borrow_mut() = None;
+        self._cred_prov_events.borrow_mut().take();
         Ok(())
     }
 
@@ -108,7 +125,7 @@ impl ICredentialProvider_Impl for Provider {
         if dwindex >= RemoteFieldID::NumFields as u32{
             Err(E_INVALIDARG.into())
         } else {
-            Ok(&mut get_credential_provider_field_descriptors()[dwindex as usize].clone())
+            unsafe {CP_FIELD_DESCRIPTORS[dwindex as usize].to_cpfd()}
         }
     }
 
@@ -132,4 +149,10 @@ impl ICredentialProvider_Impl for Provider {
         Err(E_NOTIMPL.into())
     }
         
+}
+
+impl Drop for Provider {
+    fn drop(&mut self) {
+        crate::dll_release();
+    }
 }
