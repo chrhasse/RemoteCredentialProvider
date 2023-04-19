@@ -24,7 +24,8 @@ use windows::{
             CREDENTIAL_PROVIDER_USAGE_SCENARIO,
             CPUS_UNLOCK_WORKSTATION,
             CPUS_LOGON,
-            CPUS_CREDUI, CREDENTIAL_PROVIDER_FIELD_TYPE,
+            CPUS_CREDUI,
+            CREDENTIAL_PROVIDER_FIELD_TYPE,
         },
         Graphics::Gdi::{
             HBITMAP,
@@ -57,8 +58,12 @@ use windows::{
             LsaLookupAuthenticationPackage,
             LsaDeregisterLogonProcess
         },
-        Credentials::{CredProtectW, CredIsProtectedW, CRED_PROTECTION_TYPE, CredUnprotected}
-        },
+        Credentials::{
+            CredProtectW,
+            CredIsProtectedW,
+            CRED_PROTECTION_TYPE,
+            CredUnprotected
+        }},
         System::Com::{
             CoTaskMemAlloc,
             CoTaskMemFree

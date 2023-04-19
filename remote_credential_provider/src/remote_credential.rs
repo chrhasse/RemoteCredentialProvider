@@ -8,7 +8,8 @@ use windows::{
         implement,
         Result,
         PWSTR,
-        PCWSTR, ComInterface, AsImpl
+        PCWSTR,
+        ComInterface
     },
     Win32::{
         UI::Shell::{
@@ -33,7 +34,12 @@ use windows::{
             CPFT_EDIT_TEXT,
             CPCFO_ENABLE_PASSWORD_REVEAL,
             CPCFO_ENABLE_TOUCH_KEYBOARD_AUTO_INVOKE,
-            CPCFO_NONE, CPGSR_NO_CREDENTIAL_NOT_FINISHED, CPSI_NONE, CPGSR_RETURN_CREDENTIAL_FINISHED, CPSI_WARNING, CPSI_ERROR,
+            CPCFO_NONE,
+            CPGSR_NO_CREDENTIAL_NOT_FINISHED,
+            CPSI_NONE,
+            CPGSR_RETURN_CREDENTIAL_FINISHED,
+            CPSI_WARNING,
+            CPSI_ERROR,
         },
         Foundation::{
             E_NOTIMPL,
@@ -41,12 +47,22 @@ use windows::{
             BOOL,
             E_INVALIDARG,
             NTSTATUS,
-            FALSE, GetLastError, ERROR_INSUFFICIENT_BUFFER, STATUS_SUCCESS, STATUS_INVALID_PARAMETER
+            FALSE,
+            GetLastError,
+            ERROR_INSUFFICIENT_BUFFER,
+            STATUS_SUCCESS,
+            STATUS_INVALID_PARAMETER
         },
         Graphics::Gdi::{
             HBITMAP,
         },
-        Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName, Security::Credentials::{CRED_PACK_PROTECTED_CREDENTIALS, CRED_PACK_ID_PROVIDER_CREDENTIALS, CredPackAuthenticationBufferW, STATUS_LOGON_FAILURE, STATUS_ACCOUNT_RESTRICTION, STATUS_ACCOUNT_DISABLED},
+        Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName,
+        Security::Credentials::{CRED_PACK_PROTECTED_CREDENTIALS,
+        CRED_PACK_ID_PROVIDER_CREDENTIALS,
+        CredPackAuthenticationBufferW,
+        STATUS_LOGON_FAILURE,
+        STATUS_ACCOUNT_RESTRICTION,
+        STATUS_ACCOUNT_DISABLED},
     },
     w
 };

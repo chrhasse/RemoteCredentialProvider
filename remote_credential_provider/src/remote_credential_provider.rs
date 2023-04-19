@@ -6,7 +6,8 @@ use helpers::*;
 use windows::{
     core::{
         implement,
-        Result, ComInterface,
+        Result,
+        ComInterface,
     },
     Win32::{
         UI::Shell::{
@@ -23,12 +24,15 @@ use windows::{
             CPUS_UNLOCK_WORKSTATION,
             CPUS_CREDUI,
             CPUS_CHANGE_PASSWORD,
-            ICredentialProviderUserArray, ICredentialProviderCredential2, CREDENTIAL_PROVIDER_NO_DEFAULT,
+            ICredentialProviderUserArray,
+            ICredentialProviderCredential2,
+            CREDENTIAL_PROVIDER_NO_DEFAULT,
         },
         Foundation::{
             E_NOTIMPL,
             BOOL,
-            E_INVALIDARG, E_UNEXPECTED,
+            E_INVALIDARG,
+            E_UNEXPECTED,
         },
     }, w,
 };

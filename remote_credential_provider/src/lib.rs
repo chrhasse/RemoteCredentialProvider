@@ -8,10 +8,26 @@ use std::{ffi, ptr, mem};
 use core::option::Option;
 
 use windows::{
-    core::{GUID, HRESULT, implement, Result, IUnknown, ComInterface},
+    core::{
+        GUID,
+        HRESULT,
+        implement,
+        Result,
+        IUnknown,
+        ComInterface
+    },
     Win32::{
         UI::Shell::ICredentialProvider,
-        Foundation::{CLASS_E_CLASSNOTAVAILABLE, E_POINTER, S_OK, BOOL, E_INVALIDARG, CLASS_E_NOAGGREGATION, E_NOINTERFACE, S_FALSE},
+        Foundation::{
+            CLASS_E_CLASSNOTAVAILABLE,
+            E_POINTER,
+            S_OK,
+            BOOL,
+            E_INVALIDARG,
+            CLASS_E_NOAGGREGATION,
+            E_NOINTERFACE,
+            S_FALSE
+        },
         System::Com::{
             IClassFactory,
             IClassFactory_Impl,
