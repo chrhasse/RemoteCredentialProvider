@@ -10,7 +10,7 @@ fn main() -> Result<()> {
         println!("{}", str2);
         println!("{:?}", Rswstr::from(PWSTR(std::ptr::null_mut() as *mut u16)));
         println!("{}", Rswstr::from(PWSTR(std::ptr::null_mut() as *mut u16)));
-        let split = split_domain_and_username(Rswstr::clone_from_str("domain\\user")?)?;
+        let split = split_domain_and_username(&Rswstr::clone_from_str("domain\\user")?)?;
         println!("{} {}", split.domain, split.username);
     }
     Ok(())

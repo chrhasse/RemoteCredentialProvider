@@ -1,6 +1,6 @@
 use std::{
     ptr::{self, addr_of_mut},
-    ffi::c_void,
+    ffi::c_void, ops::{Deref, DerefMut},
 };
 
 use windows::{
@@ -38,7 +38,6 @@ use windows::{
         },
         Foundation::{
             E_INVALIDARG,
-            E_NOTIMPL,
             UNICODE_STRING,
             E_FAIL,
             HANDLE,
@@ -62,6 +61,7 @@ use windows::{
         },
         System::Com::{
             CoTaskMemAlloc,
+            CoTaskMemFree
         },
     },
     core::{
@@ -225,9 +225,9 @@ impl PwstrHelpers for PWSTR {
 // because we cannot know whether our caller can accept encrypted credentials.
 //
 pub fn kerb_interactive_unlock_logon_init(
-    domain: PWSTR,
-    username: PWSTR,
-    password: PWSTR,
+    domain: Rswstr,
+    username: Rswstr,
+    password: Rswstr,
     cpus: CREDENTIAL_PROVIDER_USAGE_SCENARIO
 ) -> Result<KERB_INTERACTIVE_UNLOCK_LOGON> {
     let message_type = match cpus {
@@ -237,15 +237,17 @@ pub fn kerb_interactive_unlock_logon_init(
         CPUS_CREDUI => KERB_LOGON_SUBMIT_TYPE(0),
         _ => {return Err(E_FAIL.into())}
     };
-    Ok(KERB_INTERACTIVE_UNLOCK_LOGON {
-        Logon: KERB_INTERACTIVE_LOGON {
-            LogonDomainName: domain.to_unicode_string(),
-            UserName: username.to_unicode_string(),
-            Password: password.to_unicode_string(),
-            MessageType: message_type
-        },
-        LogonId: windows::Win32::Foundation::LUID { LowPart: 0, HighPart: 0 }
-    })
+    unsafe {
+        Ok(KERB_INTERACTIVE_UNLOCK_LOGON {
+            Logon: KERB_INTERACTIVE_LOGON {
+                LogonDomainName: domain.to_unicode_string(),
+                UserName: username.to_unicode_string(),
+                Password: password.to_unicode_string(),
+                MessageType: message_type
+            },
+            LogonId: windows::Win32::Foundation::LUID { LowPart: 0, HighPart: 0 }
+        })
+    }
 }
 
 //
@@ -267,15 +269,14 @@ pub fn kerb_interactive_unlock_logon_init(
 //
 pub unsafe fn kerb_interactive_unlock_logon_pack(
     unpacked: KERB_INTERACTIVE_UNLOCK_LOGON
-) -> Result<Vec<u8>> {
+) -> Result<CoAllocSlice<u8>> {
     // Allocate a buffer large enough to hold a
     // KERB_INTERACTIVE_UNLOCK_LOGON plus all strings
     let size = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>() +
                      unpacked.Logon.LogonDomainName.Length as usize + 
                      unpacked.Logon.UserName.Length as usize + 
                      unpacked.Logon.Password.Length as usize;
-    let buffer = CoTaskMemAlloc(size) as *mut u8;
-    let mut buffer = std::slice::from_raw_parts_mut(buffer, size).to_owned();
+    let mut buffer = CoAllocSlice::new(size)?;
 
     let mut kiul = unpacked.clone();
     const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
@@ -338,7 +339,7 @@ pub fn get_negotiate_auth_package() -> Result<u32> {
     }
 }
 
-pub fn protect_string(to_protect: Rswstr) -> Result<Rswstr> {
+pub fn protect_string(to_protect: &Rswstr) -> Result<Rswstr> {
     unsafe {
         // Call CredProtect to determine the lenght of the encrypted string
         // CredProtect might require the null terminator which as_wide leaves out but
@@ -375,12 +376,12 @@ pub fn protect_string(to_protect: Rswstr) -> Result<Rswstr> {
 }
 
 pub fn protect_password_if_necessary(
-    password: Rswstr,
+    password: &Rswstr,
     cpus: CREDENTIAL_PROVIDER_USAGE_SCENARIO
 ) -> Result<Rswstr> {
     unsafe {
         if password.str_len() == 0 {
-            return Ok(password);
+            return Ok(password.clone());
         }
         let mut already_protected = false;
         let mut protection_type = CRED_PROTECTION_TYPE(0);
@@ -394,7 +395,7 @@ pub fn protect_password_if_necessary(
         }
         
         if CPUS_CREDUI == cpus || already_protected {
-            return Ok(password)
+            return Ok(password.clone())
         }
 
         protect_string(password)
@@ -405,7 +406,7 @@ pub struct DomainUsername {
     pub username: Rswstr
 }
 
-pub unsafe fn split_domain_and_username(qualified_user_name: Rswstr) -> Result<DomainUsername> {
+pub unsafe fn split_domain_and_username(qualified_user_name: &Rswstr) -> Result<DomainUsername> {
     if let Some((domain, username)) = qualified_user_name.copy_as_string()?.split_once("\\") {
         Ok(DomainUsername{
             domain: Rswstr::clone_from_str(domain)?,
@@ -414,7 +415,54 @@ pub unsafe fn split_domain_and_username(qualified_user_name: Rswstr) -> Result<D
     } else {
         Ok(DomainUsername {
             domain: Rswstr::clone_from_str("")?,
-            username: qualified_user_name
+            username: qualified_user_name.clone()
         })
+    }
+}
+
+pub struct CoAllocSlice<T> {
+    ptr: *mut T,
+    size: usize,
+}
+
+impl<T> CoAllocSlice<T> {
+    pub fn new(size: usize) -> Result<Self> {
+        let alloc = unsafe { CoTaskMemAlloc(size) as *mut T };
+        if alloc.is_null() {
+            Err(E_OUTOFMEMORY.into())
+        } else {
+            Ok(Self {
+                ptr: alloc,
+                size,
+            })
+        }
+    }
+    
+    pub unsafe fn get_ptr(&self) -> *mut T {
+        self.ptr
+    }
+    
+    pub fn get_size(&self) -> usize {
+        self.size
+    }
+}
+
+impl<T> Deref for CoAllocSlice<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { std::slice::from_raw_parts(self.ptr, self.size)}
+    }
+}
+
+impl<T> DerefMut for CoAllocSlice<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { std::slice::from_raw_parts_mut(self.ptr, self.size)}
+    }
+}
+
+impl<T> Drop for CoAllocSlice<T> {
+    fn drop(&mut self) {
+        unsafe { CoTaskMemFree(Some(self.ptr as *mut c_void)) }
     }
 }

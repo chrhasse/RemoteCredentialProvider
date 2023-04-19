@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 
 static DLL_REF_COUNT: AtomicUsize = AtomicUsize::new(0);
+pub const CLSID_CP_DEMO: GUID = GUID::from_u128(0xDED30376_B312_4168_B2D3_2D0B3EADE513);
 
 #[no_mangle]
 extern "system" fn DllGetClassObject(
@@ -33,7 +34,6 @@ extern "system" fn DllGetClassObject(
     // The "class ID" this credential provider is identified by. This value needs to
     // match the value used when registering the credential provider (see the .reg
     // script above)
-    const CLSID_CP_DEMO: GUID = GUID::from_u128(0xDED30376_B312_4168_B2D3_2D0B3EADE513);
 
     // Validate arguments
     if ppv.is_null() {
