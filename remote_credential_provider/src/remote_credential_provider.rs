@@ -23,15 +23,17 @@ use windows::{
             CPUS_UNLOCK_WORKSTATION,
             CPUS_CREDUI,
             CPUS_CHANGE_PASSWORD,
-            ICredentialProviderUserArray,
+            ICredentialProviderUserArray, ICredentialProviderCredential2, CREDENTIAL_PROVIDER_NO_DEFAULT,
         },
         Foundation::{
             E_NOTIMPL,
             BOOL,
             E_INVALIDARG, E_UNEXPECTED,
         },
-    },
+    }, w,
 };
+
+use crate::remote_credential::RemoteCredential;
 
 
 #[implement(ICredentialProvider, ICredentialProviderSetUserArray)]
@@ -40,6 +42,9 @@ pub struct Provider {
     _cred_prov_events: RefCell<Option<ICredentialProviderEvents>>,
     _recreate_enumerated_credentials: RefCell<bool>,
     _cpus: RefCell<CREDENTIAL_PROVIDER_USAGE_SCENARIO>,
+    _auto_logon: RefCell<bool>,
+    _credential: RefCell<Option<ICredentialProviderCredential2>>,
+    _user_array: RefCell<Option<ICredentialProviderUserArray>>,
 }
 
 impl Provider {
@@ -49,7 +54,11 @@ impl Provider {
             _up_advise_context: RefCell::new(0),
             _cred_prov_events: RefCell::new(None),
             _recreate_enumerated_credentials: RefCell::new(false),
-            _cpus: RefCell::new(CREDENTIAL_PROVIDER_USAGE_SCENARIO::default())
+            _cpus: RefCell::new(CREDENTIAL_PROVIDER_USAGE_SCENARIO::default()),
+            _auto_logon: RefCell::new(false),
+            _credential: RefCell::new(None),
+            _user_array: RefCell::new(None),
+
         }
     }
     
@@ -62,14 +71,46 @@ impl Provider {
         }
         res
     }
+    
+    fn enumerate_credentials(&self) -> Result<()> {
+        if let Some(ref user_array) = *self._user_array.borrow() {
+            unsafe {
+                let count = user_array.GetCount()?;
+                if count > 0 {
+                    let user = user_array.GetAt(0)?;
+                    let cred = RemoteCredential::new(
+                        *self._cpus.borrow(),
+                        user,
+                        w!("")
+                    )?;
+                    *self._credential.borrow_mut() = Some(cred);
+                    return Ok(())
+                }
+            }
+        }
+        Err(E_UNEXPECTED.into())
+    }
+    
+    fn release_credentials(&self) {
+        *self._credential.borrow_mut() = None;
+    }
+    
+    fn create_enumerated_credentials(&self) -> Result<()>{
+        match *self._cpus.borrow() {
+            CPUS_UNLOCK_WORKSTATION | CPUS_LOGON | CPUS_CREDUI => self.enumerate_credentials()?,
+            _ => ()
+        };
+        Ok(())
+    }
 }
 
 impl ICredentialProviderSetUserArray_Impl for Provider {
     fn SetUserArray(
         &self,
-        _users: Option<&ICredentialProviderUserArray>
+        users: Option<&ICredentialProviderUserArray>
     ) ->  Result<()> {
-        Err(E_NOTIMPL.into())
+        *self._user_array.borrow_mut() = users.and_then(|user| Some(user.clone()));
+        Ok(())
     }
 }
 
@@ -102,9 +143,7 @@ impl ICredentialProvider_Impl for Provider {
         pcpe: Option<&ICredentialProviderEvents>,
         upadvisecontext: usize,
     ) -> Result<()> {
-        if let Some(p) = pcpe {
-            *self._cred_prov_events.borrow_mut() = Some(p.cast()?);
-        }
+        *self._cred_prov_events.borrow_mut() = pcpe.and_then(|p| Some(p.clone()));
         *self._up_advise_context.borrow_mut() = upadvisecontext;
         Ok(())
     }
@@ -131,22 +170,42 @@ impl ICredentialProvider_Impl for Provider {
 
     fn GetCredentialCount(
         &self,
-        _pdwcount: *mut u32,
-        _pdwdefault: *mut u32,
-        _pbautologonwithdefault: *mut BOOL,
+        pdwcount: *mut u32,
+        pdwdefault: *mut u32,
+        pbautologonwithdefault: *mut BOOL,
     ) -> Result<()> {
         if *self._recreate_enumerated_credentials.borrow() {
             *self._recreate_enumerated_credentials.borrow_mut() = false;
+            self.release_credentials();
+            self.create_enumerated_credentials()?;
         }
-        Err(E_NOTIMPL.into())
+        if self._credential.borrow().is_some() && *self._auto_logon.borrow() {
+            *self._auto_logon.borrow_mut() = false;
+            unsafe {
+                *pbautologonwithdefault = true.into();
+                *pdwdefault = 0;
+            }
+        } else {
+            unsafe {
+                *pdwdefault = CREDENTIAL_PROVIDER_NO_DEFAULT;
+                *pbautologonwithdefault = false.into();
+            }
+        }
+        unsafe { *pdwcount = 1 };
+        Ok(())
     }
 
     fn GetCredentialAt(
         &self,
-        _dwindex: u32,
+        dwindex: u32,
     ) -> Result<ICredentialProviderCredential>
     {
-        Err(E_NOTIMPL.into())
+        if dwindex == 0 {
+            if let Some(ref cred) = *self._credential.borrow() {
+                return cred.cast();
+            }
+        }
+        return Err(E_INVALIDARG.into());
     }
         
 }

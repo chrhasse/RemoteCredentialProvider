@@ -8,7 +8,7 @@ use windows::{
         implement,
         Result,
         PWSTR,
-        PCWSTR, ComInterface
+        PCWSTR, ComInterface, AsImpl
     },
     Win32::{
         UI::Shell::{
@@ -33,7 +33,7 @@ use windows::{
             CPFT_EDIT_TEXT,
             CPCFO_ENABLE_PASSWORD_REVEAL,
             CPCFO_ENABLE_TOUCH_KEYBOARD_AUTO_INVOKE,
-            CPCFO_NONE, CPGSR_NO_CREDENTIAL_NOT_FINISHED, CPSI_NONE, CPGSR_RETURN_CREDENTIAL_FINISHED,
+            CPCFO_NONE, CPGSR_NO_CREDENTIAL_NOT_FINISHED, CPSI_NONE, CPGSR_RETURN_CREDENTIAL_FINISHED, CPSI_WARNING, CPSI_ERROR,
         },
         Foundation::{
             E_NOTIMPL,
@@ -41,12 +41,12 @@ use windows::{
             BOOL,
             E_INVALIDARG,
             NTSTATUS,
-            FALSE, GetLastError, ERROR_INSUFFICIENT_BUFFER
+            FALSE, GetLastError, ERROR_INSUFFICIENT_BUFFER, STATUS_SUCCESS, STATUS_INVALID_PARAMETER
         },
         Graphics::Gdi::{
             HBITMAP,
         },
-        Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName, Security::Credentials::{CRED_PACK_PROTECTED_CREDENTIALS, CRED_PACK_ID_PROVIDER_CREDENTIALS, CredPackAuthenticationBufferW},
+        Storage::EnhancedStorage::PKEY_Identity_QualifiedUserName, Security::Credentials::{CRED_PACK_PROTECTED_CREDENTIALS, CRED_PACK_ID_PROVIDER_CREDENTIALS, CredPackAuthenticationBufferW, STATUS_LOGON_FAILURE, STATUS_ACCOUNT_RESTRICTION, STATUS_ACCOUNT_DISABLED},
     },
     w
 };
@@ -67,10 +67,10 @@ impl RemoteCredential {
         cpus: CREDENTIAL_PROVIDER_USAGE_SCENARIO,
         user: ICredentialProviderUser,
         password: PCWSTR
-    ) -> Result<Self> {
+    ) -> Result<ICredentialProviderCredential2> {
         crate::dll_add_ref();
         let guid_provider = unsafe { user.GetProviderID()? };
-        Ok(RemoteCredential {
+        let cred: ICredentialProviderCredential2 = RemoteCredential {
             _cpus: RefCell::new(cpus),
             _ref: RefCell::new(1),
             _cred_prov_cred_events: RefCell::new(None),
@@ -87,7 +87,8 @@ impl RemoteCredential {
                 Rswstr::clone_from_str("Submit")?, // SubmitButton
             ]),
             
-        })
+        }.into();
+        Ok(cred)
     }
 }
 
@@ -300,12 +301,29 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
 
     fn ReportResult(
         &self,
-        _ntsstatus:NTSTATUS,
-        _ntssubstatus:NTSTATUS,
-        _ppszoptionalstatustext: *mut PWSTR,
-        _pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
+        ntsstatus:NTSTATUS,
+        ntssubstatus:NTSTATUS,
+        ppszoptionalstatustext: *mut PWSTR,
+        pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
     ) ->  Result<()> {
-        Err(E_NOTIMPL.into())
+        unsafe {
+            *ppszoptionalstatustext = PWSTR(std::ptr::null_mut());
+            *pcpsioptionalstatusicon = CPSI_NONE;
+            let (status_info, status_icon) = match (ntsstatus, ntssubstatus) {
+                (STATUS_LOGON_FAILURE, STATUS_SUCCESS) => ("Incorrect password or username.", CPSI_ERROR),
+                (STATUS_ACCOUNT_RESTRICTION, STATUS_ACCOUNT_DISABLED) => ("The account is disabled.", CPSI_WARNING),
+                (STATUS_INVALID_PARAMETER, STATUS_SUCCESS) => ("Must log in with password at least once after reboot", CPSI_ERROR),
+                _ => ("Unknown Error", CPSI_ERROR)
+            };
+            *ppszoptionalstatustext = Rswstr::clone_from_str(status_info)?.to_pwstr();
+            *pcpsioptionalstatusicon = status_icon;
+            if ntsstatus.is_err() {
+                (*self._cred_prov_cred_events.borrow()).as_ref().and_then(|e| {
+                    e.SetFieldString(&self.cast::<ICredentialProviderCredential>().unwrap(), RemoteFieldID::Password as u32, w!("")).ok()
+                });
+            }
+        }
+        Ok(())
     }
 }
 
