@@ -264,14 +264,18 @@ pub unsafe fn kerb_interactive_unlock_logon_pack(
     // Copy each string into the buffer leaving space at the start for KIUL
     let mut start;
     let mut end = KIUL_SIZE;
-    for string in [kiul.Logon.LogonDomainName, kiul.Logon.UserName, kiul.Logon.Password] {
+    let mut buffers = [0, 0, 0];
+    for (idx, string) in [kiul.Logon.LogonDomainName, kiul.Logon.UserName, kiul.Logon.Password].into_iter().enumerate() {
         info!("packing string: {}", string.Buffer.display());
         let len = string.Length as usize;
         (start, end) = (end, end + len);
         let bytes = std::slice::from_raw_parts(string.Buffer.0 as *mut u8, len);
         buffer[start..end].copy_from_slice(bytes);
-        kiul.Logon.LogonDomainName.Buffer = PWSTR(start as *mut u16);
+        buffers[idx] = start;
     }
+    kiul.Logon.LogonDomainName.Buffer = PWSTR(buffers[0] as *mut u16);
+    kiul.Logon.UserName.Buffer = PWSTR(buffers[1] as *mut u16);
+    kiul.Logon.Password.Buffer = PWSTR(buffers[2] as *mut u16);
     // Copy KIUL into the buffer
     buffer[..KIUL_SIZE].copy_from_slice(&std::mem::transmute::<KERB_INTERACTIVE_UNLOCK_LOGON, [u8; KIUL_SIZE]>(kiul));
     info!("copied kiul");
