@@ -82,18 +82,26 @@ pub use crate::strings::Rswstr;
 use log::LevelFilter;
 pub use log::{warn, info, error};
 
-fn logger_file_setup(folder: &str) -> std::io::Result<()> {
-    let contents = std::fs::read_dir(folder)?;
-    let file = format!("{folder}\\{:04}.log", contents.count());
-    simple_logging::log_to_file(file, LevelFilter::Info)
-}
 
+#[cfg(debug_assertions)]
 pub fn logger_setup(folder: &str) {
+    fn logger_file_setup(folder: &str) -> std::io::Result<()> {
+        let contents = std::fs::read_dir(folder)?;
+        let file = format!("{folder}\\{:04}.log", contents.count());
+        simple_logging::log_to_file(file, LevelFilter::Info)
+    }
+
     if let Err(e) = logger_file_setup(folder) {
         simple_logging::log_to_stderr(LevelFilter::Info);
         warn!("File failed: {e}");
     }
 }
+
+#[cfg(not(debug_assertions))]
+pub fn logger_setup(_folder: &str) {
+    simple_logging::log_to_stderr(LevelFilter::Off)
+}
+
 pub enum RemoteFieldID {
     TileImage = 0,
     Label = 1,
