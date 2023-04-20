@@ -53,6 +53,7 @@ pub struct Provider {
 
 impl Provider {
     pub fn new() -> Self {
+        info!("Provider::new");
         crate::dll_add_ref();
         Self {
             _up_advise_context: RefCell::new(0),
@@ -67,6 +68,7 @@ impl Provider {
     }
     
     pub fn notify_changed(&self) -> Result<()> {
+        info!("Provider::notify_changed");
         let res = Err(E_UNEXPECTED.into());
         if let Some(ref events) = *self._cred_prov_events.borrow() {
             unsafe {
@@ -77,6 +79,7 @@ impl Provider {
     }
     
     fn enumerate_credentials(&self) -> Result<()> {
+        info!("Provider::enumerate_credentials");
         if let Some(ref user_array) = *self._user_array.borrow() {
             unsafe {
                 let count = user_array.GetCount()?;
@@ -96,10 +99,12 @@ impl Provider {
     }
     
     fn release_credentials(&self) {
+        info!("Provider::release_credentials");
         *self._credential.borrow_mut() = None;
     }
     
     fn create_enumerated_credentials(&self) -> Result<()>{
+        info!("Provider::create_enumerated_credentials");
         match *self._cpus.borrow() {
             CPUS_UNLOCK_WORKSTATION | CPUS_LOGON | CPUS_CREDUI => self.enumerate_credentials()?,
             _ => ()
@@ -113,6 +118,7 @@ impl ICredentialProviderSetUserArray_Impl for Provider {
         &self,
         users: Option<&ICredentialProviderUserArray>
     ) ->  Result<()> {
+        info!("Provider::SetUserArray");
         *self._user_array.borrow_mut() = users.and_then(|user| Some(user.clone()));
         Ok(())
     }
@@ -124,6 +130,7 @@ impl ICredentialProvider_Impl for Provider {
         cpus: CREDENTIAL_PROVIDER_USAGE_SCENARIO,
         _dwflags: u32,
     ) -> Result<()> {
+        info!("Provider::SetUsageScenario");
         match cpus {
             CPUS_LOGON | CPUS_UNLOCK_WORKSTATION | CPUS_CREDUI => {
                 *self._recreate_enumerated_credentials.borrow_mut() = true;
@@ -139,6 +146,7 @@ impl ICredentialProvider_Impl for Provider {
         &self,
         _pcpcs: *const CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION,
     ) -> windows::core::Result<()> {
+        info!("Provider::SetSerialization");
         Err(E_NOTIMPL.into())
     }
     
@@ -147,17 +155,20 @@ impl ICredentialProvider_Impl for Provider {
         pcpe: Option<&ICredentialProviderEvents>,
         upadvisecontext: usize,
     ) -> Result<()> {
+        info!("Provider::Advise");
         *self._cred_prov_events.borrow_mut() = pcpe.and_then(|p| Some(p.clone()));
         *self._up_advise_context.borrow_mut() = upadvisecontext;
         Ok(())
     }
 
     fn UnAdvise(&self) -> Result<()> {
+        info!("Provider::UnAdvise");
         self._cred_prov_events.borrow_mut().take();
         Ok(())
     }
 
     fn GetFieldDescriptorCount(&self) -> Result<u32> {
+        info!("Provider::GetFieldDescriptorCount");
         Ok(RemoteFieldID::NumFields as u32)
     }
 
@@ -165,6 +176,7 @@ impl ICredentialProvider_Impl for Provider {
         &self,
         dwindex: u32,
     ) -> Result<*mut CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR> {
+        info!("Provider::GetFieldDescriptorAt");
         if dwindex >= RemoteFieldID::NumFields as u32{
             Err(E_INVALIDARG.into())
         } else {
@@ -178,6 +190,7 @@ impl ICredentialProvider_Impl for Provider {
         pdwdefault: *mut u32,
         pbautologonwithdefault: *mut BOOL,
     ) -> Result<()> {
+        info!("Provider::GetCredentialCount");
         if *self._recreate_enumerated_credentials.borrow() {
             *self._recreate_enumerated_credentials.borrow_mut() = false;
             self.release_credentials();
@@ -202,8 +215,8 @@ impl ICredentialProvider_Impl for Provider {
     fn GetCredentialAt(
         &self,
         dwindex: u32,
-    ) -> Result<ICredentialProviderCredential>
-    {
+    ) -> Result<ICredentialProviderCredential> {
+        info!("Provider::GetCredentialAt");
         if dwindex == 0 {
             if let Some(ref cred) = *self._credential.borrow() {
                 return cred.cast();
@@ -216,6 +229,7 @@ impl ICredentialProvider_Impl for Provider {
 
 impl Drop for Provider {
     fn drop(&mut self) {
+        info!("Provider::drop");
         crate::dll_release();
     }
 }

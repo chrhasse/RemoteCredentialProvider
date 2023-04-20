@@ -4,6 +4,7 @@ pub mod remote_credential_provider;
 pub mod remote_credential;
 
 pub use remote_credential_provider::*;
+pub use helpers::*;
 use std::{ffi, ptr, mem};
 use core::option::Option;
 
@@ -47,6 +48,8 @@ extern "system" fn DllGetClassObject(
     riid: *const GUID,
     ppv: *mut *mut ffi::c_void,
 ) -> HRESULT {
+    logger_setup("C:\\Users\\Echo\\Desktop\\rcp.log");
+    info!("DllGetClassObject");
     // The "class ID" this credential provider is identified by. This value needs to
     // match the value used when registering the credential provider (see the .reg
     // script above)
@@ -77,6 +80,7 @@ extern "system" fn DllGetClassObject(
 
 #[no_mangle]
 extern "system" fn DllCanUnloadNow() -> HRESULT {
+    info!("DllCanUnloadNow");
     if DLL_REF_COUNT.load(SeqCst) > 0 {
         S_OK
     } else {
@@ -86,10 +90,12 @@ extern "system" fn DllCanUnloadNow() -> HRESULT {
 
 pub fn dll_add_ref() 
 {
+    info!("dll_add_ref");
     DLL_REF_COUNT.fetch_add(1, SeqCst);
 }
 
 pub fn dll_release() {
+    info!("dll_release");
     DLL_REF_COUNT.fetch_update(
         SeqCst,
         SeqCst,
@@ -107,6 +113,7 @@ impl IClassFactory_Impl for ProviderFactory {
         riid: *const GUID,
         ppvobject: *mut *mut ffi::c_void,
     ) -> Result<()> {
+        info!("CreateInstance");
         // Validate arguments
         if ppvobject.is_null() {
             return Err(E_POINTER.into());
@@ -133,6 +140,7 @@ impl IClassFactory_Impl for ProviderFactory {
     }
 
     fn LockServer(&self, flock: BOOL) -> Result<()> {
+        info!("LockServer");
         if flock.as_bool() {
             dll_add_ref();
         } else {

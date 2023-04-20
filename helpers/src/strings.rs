@@ -115,7 +115,7 @@ impl Rswstr {
     
     pub fn clone_from_str(value: &str) -> Result<Self> {
         let mut tmp_vec: Vec<u16> = value.encode_utf16().collect();
-        if tmp_vec[tmp_vec.len() - 1] != 0_u16 {
+        if tmp_vec.len() <= 0 || tmp_vec[tmp_vec.len() - 1] != 0_u16 {
             tmp_vec.push(0_u16);
         }
         let copy = unsafe { SHStrDupW(PCWSTR(tmp_vec.as_ptr()))? };

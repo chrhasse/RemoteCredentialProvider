@@ -70,7 +70,6 @@ use windows::{
 #[implement(ICredentialProviderCredential, ICredentialProviderCredential2, ICredentialProviderCredentialWithFieldOptions)]
 pub struct RemoteCredential {
     _cpus: RefCell<CREDENTIAL_PROVIDER_USAGE_SCENARIO>,
-    _ref: RefCell<i64>,
     _cred_prov_cred_events: RefCell<Option<ICredentialProviderCredentialEvents2>>,
     _user_sid: RefCell<Rswstr>,
     _qualified_user_name: RefCell<Rswstr>,
@@ -84,27 +83,35 @@ impl RemoteCredential {
         user: ICredentialProviderUser,
         password: PCWSTR
     ) -> Result<ICredentialProviderCredential2> {
+        info!("RemoteCredential::new");
         crate::dll_add_ref();
-        let guid_provider = unsafe { user.GetProviderID()? };
-        let cred: ICredentialProviderCredential2 = RemoteCredential {
-            _cpus: RefCell::new(cpus),
-            _ref: RefCell::new(1),
-            _cred_prov_cred_events: RefCell::new(None),
-            _user_sid: RefCell::new(unsafe {Rswstr::from(user.GetSid()?)}),
-            _qualified_user_name: RefCell::new(
-                unsafe { Rswstr::from(user.GetStringValue(&PKEY_Identity_QualifiedUserName)?) }
-            ),
-            _is_local_user: RefCell::new(guid_provider == Identity_LocalUserProvider),
-            _field_strings: RefCell::new([
-                Rswstr::clone_from_str("")?, // TileImage
-                Rswstr::clone_from_str("Auto Login")?, // Label
-                Rswstr::clone_from_str("Auto Login")?, // LargeText
-                unsafe {Rswstr::clone_from_pcwstr(password)?}, // Password
-                Rswstr::clone_from_str("Submit")?, // SubmitButton
-            ]),
-            
-        }.into();
-        Ok(cred)
+        unsafe {
+            let is_local = user.GetProviderID()? == Identity_LocalUserProvider;
+            info!("got local");
+            let user_sid = Rswstr::from(user.GetSid()?);
+            info!("got sid");
+            let qualified_user_name = Rswstr::from(user.GetStringValue(&PKEY_Identity_QualifiedUserName)?);
+            info!("got username");
+            let field_strings = [
+                    Rswstr::clone_from_str("")?, // TileImage
+                    Rswstr::clone_from_str("Auto Login")?, // Label
+                    Rswstr::clone_from_str("Auto Login")?, // LargeText
+                    Rswstr::clone_from_pcwstr(password)?, // Password
+                    Rswstr::clone_from_str("Submit")?, // SubmitButton
+                ];
+            info!("got field_strings");
+            let cred = RemoteCredential {
+                _cpus: RefCell::new(cpus),
+                _cred_prov_cred_events: RefCell::new(None),
+                _user_sid: RefCell::new(user_sid),
+                _qualified_user_name: RefCell::new(qualified_user_name),
+                _is_local_user: RefCell::new(is_local),
+                _field_strings: RefCell::new(field_strings),
+                
+            };
+            info!("got cred");
+            Ok(cred.into())
+        }
     }
 }
 
@@ -113,6 +120,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         &self,
         pcpce: Option<&ICredentialProviderCredentialEvents>
     ) ->  Result<()> {
+        info!("RemoteCredential::Advise");
         if let Some(events) = pcpce {
             *self._cred_prov_cred_events.borrow_mut() = Some(events.cast()?);
         } else {
@@ -122,15 +130,18 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
     }
 
     fn UnAdvise(&self) ->  Result<()> {
+        info!("RemoteCredential::UnAdvise");
         *self._cred_prov_cred_events.borrow_mut() = None;
         Ok(())
     }
 
     fn SetSelected(&self) ->  Result<BOOL> {
+        info!("RemoteCredential::SetSelected");
         Ok(FALSE)
     }
 
     fn SetDeselected(&self) ->  Result<()> {
+        info!("RemoteCredential::SetDeselected");
         (*self._field_strings.borrow_mut())[RemoteFieldID::Password as usize] = Rswstr::clone_from_str("")?;
         if let Some(ref cred_prov_events) = *self._cred_prov_cred_events.borrow() {
             unsafe {
@@ -149,6 +160,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         pcpfs: *mut CREDENTIAL_PROVIDER_FIELD_STATE,
         pcpfis: *mut CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE
     ) ->  Result<()> {
+        info!("RemoteCredential::GetFieldState");
         if dwfieldid < RemoteFieldID::NumFields as u32 &&
         !pcpfs.is_null() &&
         !pcpfis.is_null() {
@@ -163,9 +175,12 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
     }
 
     fn GetStringValue(&self, dwfieldid: u32) ->  Result<PWSTR> {
+        info!("RemoteCredential::GetStringValue");
         if dwfieldid < RemoteFieldID::NumFields as u32 {
             unsafe {
-                Ok((*self._field_strings.borrow())[dwfieldid as usize].clone().as_pwstr())
+                let string = (*self._field_strings.borrow())[dwfieldid as usize].clone();
+                info!("Value: {string}");
+                Ok(string.to_pwstr())
             }
         } else {
             Err(E_INVALIDARG.into())
@@ -173,6 +188,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
     }
 
     fn GetBitmapValue(&self, dwfieldid: u32) ->  Result<HBITMAP> {
+        info!("RemoteCredential::GetBitmapValue");
         if dwfieldid == RemoteFieldID::TileImage as u32 {
             get_tile_image()
         } else {
@@ -186,10 +202,12 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         _pbchecked: *mut BOOL,
         _ppszlabel: *mut PWSTR
     ) ->  Result<()> {
+        info!("RemoteCredential::GetCheckboxValue");
         Err(E_NOTIMPL.into())
     }
 
     fn GetSubmitButtonValue(&self, dwfieldid: u32) ->  Result<u32> {
+        info!("RemoteCredential::GetSubmitButtonValue");
         if dwfieldid == RemoteFieldID::SubmitButton as u32 {
             Ok(RemoteFieldID::Password as u32)
         } else {
@@ -203,6 +221,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         _pcitems: *mut u32,
         _pdwselecteditem: *mut u32
     ) ->  Result<()> {
+        info!("RemoteCredential::GetComboBoxValueCount");
         Err(E_NOTIMPL.into())
     }
 
@@ -211,6 +230,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         _dwfieldid: u32,
         _dwitem:u32
     ) ->  Result<PWSTR> {
+        info!("RemoteCredential::GetComboBoxValueAt");
         Err(E_NOTIMPL.into())
     }
 
@@ -219,6 +239,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         dwfieldid: u32,
         psz: &PCWSTR
     ) ->  Result<()> {
+        info!("RemoteCredential::SetStringValue");
         if dwfieldid < RemoteFieldID::NumFields as u32 &&
             (CP_FIELD_DESCRIPTORS[dwfieldid as usize].cpft == CPFT_PASSWORD_TEXT ||
              CP_FIELD_DESCRIPTORS[dwfieldid as usize].cpft == CPFT_EDIT_TEXT) {
@@ -236,6 +257,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         &self,
         _dwfieldid: u32,
         _bchecked: BOOL) ->  Result<()> {
+        info!("RemoteCredential::SetCheckboxValue");
         Err(E_NOTIMPL.into())
     }
 
@@ -244,6 +266,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         _dwfieldid: u32,
         _dwselecteditem: u32
     ) ->  Result<()> {
+        info!("RemoteCredential::SetComboBoxSelectedValue");
         Err(E_NOTIMPL.into())
     }
 
@@ -251,6 +274,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         &self,
         _dwfieldid: u32
     ) ->  Result<()> {
+        info!("RemoteCredential::CommandLinkClicked");
         Err(E_NOTIMPL.into())
     }
 
@@ -261,6 +285,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         ppszoptionalstatustext: *mut PWSTR,
         pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
     ) ->  Result<()> {
+        info!("RemoteCredential::GetSerialization");
         unsafe {
             *pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
             *ppszoptionalstatustext = PWSTR(std::ptr::null_mut());
@@ -322,6 +347,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
         ppszoptionalstatustext: *mut PWSTR,
         pcpsioptionalstatusicon: *mut CREDENTIAL_PROVIDER_STATUS_ICON
     ) ->  Result<()> {
+        info!("RemoteCredential::ReportResult");
         unsafe {
             *ppszoptionalstatustext = PWSTR(std::ptr::null_mut());
             *pcpsioptionalstatusicon = CPSI_NONE;
@@ -345,12 +371,14 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
 
 impl ICredentialProviderCredential2_Impl for RemoteCredential {
     fn GetUserSid(&self) ->  Result<PWSTR> {
+        info!("RemoteCredential::GetUserSid");
         unsafe {Ok(self._user_sid.borrow().clone().to_pwstr())}
     }
 }
 
 impl ICredentialProviderCredentialWithFieldOptions_Impl for RemoteCredential {
     fn GetFieldOptions(&self, fieldid: u32) ->  Result<CREDENTIAL_PROVIDER_CREDENTIAL_FIELD_OPTIONS> {
+        info!("RemoteCredential::GetFieldOptions");
         let mut cpcfo = CPCFO_NONE;
         if fieldid == RemoteFieldID::Password as u32 {
             cpcfo = CPCFO_ENABLE_PASSWORD_REVEAL;
@@ -363,6 +391,7 @@ impl ICredentialProviderCredentialWithFieldOptions_Impl for RemoteCredential {
 
 impl Drop for RemoteCredential {
     fn drop(&mut self) {
+        info!("RemoteCredential::drop");
         crate::dll_release();
     }
 }

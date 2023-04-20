@@ -81,6 +81,16 @@ use windows::{
 mod strings;
 pub use crate::strings::Rswstr;
 
+use log::LevelFilter;
+pub use log::{warn, info, error};
+
+pub fn logger_setup(file_name: &str) {
+    let log_res = simple_logging::log_to_file(file_name, LevelFilter::Info);
+    if let Err(e) = log_res {
+        simple_logging::log_to_stderr(LevelFilter::Info);
+        warn!("File failed: {e}");
+    }
+}
 pub enum RemoteFieldID {
     TileImage = 0,
     Label = 1,

@@ -1,4 +1,4 @@
-use windows::{core::{Result, PWSTR}, w};
+use windows::{core::{Result, PWSTR, PCWSTR}, w};
 use helpers::*;
 fn main() -> Result<()> {
     unsafe {
@@ -12,6 +12,19 @@ fn main() -> Result<()> {
         println!("{}", Rswstr::from(PWSTR(std::ptr::null_mut() as *mut u16)));
         let split = split_domain_and_username(&Rswstr::clone_from_str("domain\\user")?)?;
         println!("{} {}", split.domain, split.username);
+        let password = PCWSTR(std::ptr::null());
+        let e = Rswstr::clone_from_str("")?; // TileImage
+        println!("{e}");
+        let b = e.clone();
+        println!("b:{b}");
+        let e = Rswstr::clone_from_str("Auto Login")?; // Label
+        println!("{e}");
+        let e = Rswstr::clone_from_str("Auto Login")?; // LargeText
+        println!("{e}");
+        //let e = Rswstr::clone_from_pcwstr(password)?; // Password
+        println!("{e}");
+        let e = Rswstr::clone_from_str("Submit")?; // SubmitButton
+        println!("{e}");
     }
     Ok(())
 }
