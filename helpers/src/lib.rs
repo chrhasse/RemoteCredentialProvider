@@ -39,7 +39,6 @@ use windows::{
         },
         Foundation::{
             E_INVALIDARG,
-            UNICODE_STRING,
             E_FAIL,
             HANDLE,
             TRUE,
@@ -73,7 +72,6 @@ use windows::{
         PWSTR,
         GUID,
         Result,
-        PCWSTR,
         PSTR
     },
     };
@@ -84,9 +82,14 @@ pub use crate::strings::Rswstr;
 use log::LevelFilter;
 pub use log::{warn, info, error};
 
-pub fn logger_setup(file_name: &str) {
-    let log_res = simple_logging::log_to_file(file_name, LevelFilter::Info);
-    if let Err(e) = log_res {
+fn logger_file_setup(folder: &str) -> std::io::Result<()> {
+    let contents = std::fs::read_dir(folder)?;
+    let file = format!("{folder}\\{:04}.log", contents.count());
+    simple_logging::log_to_file(file, LevelFilter::Info)
+}
+
+pub fn logger_setup(folder: &str) {
+    if let Err(e) = logger_file_setup(folder) {
         simple_logging::log_to_stderr(LevelFilter::Info);
         warn!("File failed: {e}");
     }
@@ -194,42 +197,6 @@ pub fn get_tile_image() -> Result<HBITMAP> {
     }
 }
 
-trait PwstrHelpers {
-    fn to_unicode_string(self) -> UNICODE_STRING;
-    fn len(&self) -> usize;
-    fn to_pcwstr(self) -> PCWSTR;
-    fn as_bytes(&self) -> &[u8];
-    unsafe fn with_length(len: usize) -> Self;
-}
-
-impl PwstrHelpers for PWSTR {
-    fn to_unicode_string(self) -> UNICODE_STRING {
-        let size = (self.len() * std::mem::size_of::<u16>()) as u16;
-        UNICODE_STRING { Length: size, MaximumLength: size, Buffer: self }
-    }
-    
-    fn len(&self) -> usize {
-        unsafe {
-            self.as_wide().len()
-        }
-    }
-    
-    fn to_pcwstr(self) -> PCWSTR {
-        PCWSTR(self.as_ptr() as *const u16)
-    }
-    
-    fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::mem::transmute::<&[u16], &[u8]>(self.as_wide())
-        }
-    }
-    
-    unsafe fn with_length(len: usize) -> Self {
-        PWSTR(CoTaskMemAlloc(len * std::mem::size_of::<u16>()) as *mut u16)
-    }
-}
-
-
 //
 // Initialize the members of a KERB_INTERACTIVE_UNLOCK_LOGON with weak references to the
 // passed-in strings.  This is useful if you will later use KerbInteractiveUnlockLogonPack
@@ -283,35 +250,31 @@ pub fn kerb_interactive_unlock_logon_init(
 // http://msdn.microsoft.com/msdnmag/issues/05/06/SecurityBriefs/#void
 //
 pub unsafe fn kerb_interactive_unlock_logon_pack(
-    unpacked: KERB_INTERACTIVE_UNLOCK_LOGON
+    mut kiul: KERB_INTERACTIVE_UNLOCK_LOGON
 ) -> Result<CoAllocSlice<u8>> {
     // Allocate a buffer large enough to hold a
     // KERB_INTERACTIVE_UNLOCK_LOGON plus all strings
-    let size = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>() +
-                     unpacked.Logon.LogonDomainName.Length as usize + 
-                     unpacked.Logon.UserName.Length as usize + 
-                     unpacked.Logon.Password.Length as usize;
+    const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
+    let size = KIUL_SIZE +
+                     kiul.Logon.LogonDomainName.Length as usize + 
+                     kiul.Logon.UserName.Length as usize + 
+                     kiul.Logon.Password.Length as usize;
     let mut buffer = CoAllocSlice::new(size)?;
 
-    let mut kiul = unpacked.clone();
-    const KIUL_SIZE: usize = std::mem::size_of::<KERB_INTERACTIVE_UNLOCK_LOGON>();
-
-
     // Copy each string into the buffer leaving space at the start for KIUL
-    let (mut start, mut end) = (KIUL_SIZE, KIUL_SIZE + kiul.Logon.LogonDomainName.Length as usize);
-    kiul.Logon.LogonDomainName.Buffer = PWSTR(start as *mut u16);
-    buffer[start..end].copy_from_slice(kiul.Logon.LogonDomainName.Buffer.as_bytes());
-
-    (start, end) = (end, end + kiul.Logon.UserName.Length as usize);
-    kiul.Logon.UserName.Buffer = PWSTR(start as *mut u16);
-    buffer[start..end].copy_from_slice(kiul.Logon.UserName.Buffer.as_bytes());
-
-    (start, end) = (end, end + kiul.Logon.Password.Length as usize);
-    kiul.Logon.Password.Buffer = PWSTR(start as *mut u16);
-    buffer[start..end].copy_from_slice(kiul.Logon.Password.Buffer.as_bytes());
-
+    let mut start;
+    let mut end = KIUL_SIZE;
+    for string in [kiul.Logon.LogonDomainName, kiul.Logon.UserName, kiul.Logon.Password] {
+        info!("packing string: {}", string.Buffer.display());
+        let len = string.Length as usize;
+        (start, end) = (end, end + len);
+        let bytes = std::slice::from_raw_parts(string.Buffer.0 as *mut u8, len);
+        buffer[start..end].copy_from_slice(bytes);
+        kiul.Logon.LogonDomainName.Buffer = PWSTR(start as *mut u16);
+    }
     // Copy KIUL into the buffer
     buffer[..KIUL_SIZE].copy_from_slice(&std::mem::transmute::<KERB_INTERACTIVE_UNLOCK_LOGON, [u8; KIUL_SIZE]>(kiul));
+    info!("copied kiul");
     Ok(buffer)
 }
 

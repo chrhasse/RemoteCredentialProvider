@@ -48,7 +48,7 @@ extern "system" fn DllGetClassObject(
     riid: *const GUID,
     ppv: *mut *mut ffi::c_void,
 ) -> HRESULT {
-    logger_setup("C:\\Users\\Echo\\Desktop\\rcp.log");
+    logger_setup("C:\\Users\\Echo\\Desktop\\rcp");
     info!("DllGetClassObject");
     // The "class ID" this credential provider is identified by. This value needs to
     // match the value used when registering the credential provider (see the .reg

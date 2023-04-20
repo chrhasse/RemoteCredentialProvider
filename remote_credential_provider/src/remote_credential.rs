@@ -292,10 +292,12 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
             *pcpsioptionalstatusicon = CPSI_NONE;
             pcpcs.write_bytes(0_u8, 1);
             if *self._is_local_user.borrow() {
+                info!("is local");
                 let encrypted_password = protect_password_if_necessary(
                     &self._field_strings.borrow()[RemoteFieldID::Password as usize],
                     *self._cpus.borrow()
                 )?;
+                info!("got encrypted password");
                 let user_domain = split_domain_and_username(&self._qualified_user_name.borrow())?;
                 let kiul = kerb_interactive_unlock_logon_init(
                     user_domain.domain,
@@ -303,14 +305,18 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
                     encrypted_password,
                     *self._cpus.borrow()
                 )?;
+                info!("created kiul");
                 let packed = ManuallyDrop::new(kerb_interactive_unlock_logon_pack(kiul)?);
+                info!("packed kiul");
                 (*pcpcs).rgbSerialization = packed.get_ptr();
                 (*pcpcs).cbSerialization = packed.get_size() as u32;
                 (*pcpcs).ulAuthenticationPackage = get_negotiate_auth_package()?;
                 (*pcpcs).clsidCredentialProvider = crate::CLSID_CP_DEMO;
                 *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+                info!("serialized");
                 Ok(())
             } else {
+                info!("remote");
                 let auth_flags = CRED_PACK_PROTECTED_CREDENTIALS | CRED_PACK_ID_PROVIDER_CREDENTIALS;
                 if !CredPackAuthenticationBufferW(
                     auth_flags,
@@ -319,6 +325,7 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
                     None,
                     addr_of_mut!((*pcpcs).cbSerialization)
                 ).as_bool() && GetLastError() == ERROR_INSUFFICIENT_BUFFER {
+                    info!("got cred pack size");
                     let serialization = CoAllocSlice::new((*pcpcs).cbSerialization as usize)?;
                     if CredPackAuthenticationBufferW(
                         auth_flags,
@@ -327,10 +334,12 @@ impl ICredentialProviderCredential_Impl for RemoteCredential {
                         Some(serialization.get_ptr()),
                         addr_of_mut!((*pcpcs).cbSerialization)
                     ).as_bool() {
+                        info!("got cred pack");
                         (*pcpcs).ulAuthenticationPackage = get_negotiate_auth_package()?;
                         (*pcpcs).clsidCredentialProvider = crate::CLSID_CP_DEMO;
                         (*pcpcs).rgbSerialization = ManuallyDrop::new(serialization).get_ptr();
                         *pcpgsr = CPGSR_RETURN_CREDENTIAL_FINISHED;
+                        info!("got serialization");
                         return Ok(())
                     }
                 }
